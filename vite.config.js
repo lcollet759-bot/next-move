@@ -1,15 +1,18 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
-import basicSsl from '@vitejs/plugin-basic-ssl'
+
+// HTTPS local uniquement (dev LAN Android) — ignoré sur Vercel
+let basicSsl = null
+try { basicSsl = (await import('@vitejs/plugin-basic-ssl')).default } catch {}
 
 export default defineConfig({
   server: {
-    https: true,
-    host: true         // équivalent de --host
+    https: !!basicSsl,
+    host: true
   },
   plugins: [
-    basicSsl(),
+    ...(basicSsl ? [basicSsl()] : []),
     react(),
     VitePWA({
       registerType: 'autoUpdate',
