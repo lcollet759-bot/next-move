@@ -169,7 +169,33 @@ export function AppProvider({ children }) {
   const [state, dispatch] = useReducer(reducer, init)
 
   useEffect(() => {
+    // ── Migration one-shot depuis IndexedDB ──────────────────────────────────
+    async function migrateFromIndexedDB() {
+      const MIGRATION_KEY = 'nm-supabase-migrated'
+      if (localStorage.getItem(MIGRATION_KEY)) return
+      try {
+        const { openDB } = await import('idb')
+        const idb = await openDB('next-move', 1)
+        const oldDossiers = await idb.getAll('dossiers')
+        const oldJournal  = await idb.getAll('journal')
+        if (oldDossiers.length > 0) {
+          // Upsert en batch pour éviter les conflits
+          await Promise.all(oldDossiers.map(d => db.saveDossier(d)))
+          await Promise.all(oldJournal.map(j => db.addJournalEntry(j)))
+          console.log(`[Migration] ${oldDossiers.length} dossiers, ${oldJournal.length} entrées migrés vers Supabase`)
+        }
+        idb.close()
+      } catch {
+        // Pas de données IndexedDB ou DB inexistante — migration silencieuse
+      } finally {
+        localStorage.setItem(MIGRATION_KEY, '1')
+      }
+    }
+
     async function load() {
+      // Migrer les données IndexedDB existantes (une seule fois)
+      await migrateFromIndexedDB()
+
       let [dossiers, journal] = await Promise.all([db.getDossiers(), db.getJournal()])
 
       // ── Recalcul quotidien : Eisenhower + statuts automatiques ────────────
