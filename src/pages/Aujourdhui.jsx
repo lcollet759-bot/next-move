@@ -49,52 +49,57 @@ function SkeletonCard() {
   )
 }
 
+const MSG_KEY  = 'nm-morning-msg'
+const DATE_KEY = 'nm-morning-date'
+const HASH_KEY = 'nm-morning-hash'
+
+function dossiersHash(dossiers) {
+  return dossiers.map(d => d.id + '|' + d.updatedAt + '|' + d.etat).join(';')
+}
+
 export default function Aujourdhui() {
   const { dossiersAujourdhui, loading, apiKey } = useApp()
   const [message,    setMessage]    = useState(null)
   const [loadingMsg, setLoadingMsg] = useState(false)
 
-  const rafraichirMessage = () => {
-    if (!apiKey || dossiersAujourdhui.length === 0 || loadingMsg) return
+  function generer(dossiers) {
     const today = new Date().toDateString()
-    sessionStorage.removeItem('morning-message')
-    sessionStorage.removeItem('morning-message-date')
-    setMessage(null)
     setLoadingMsg(true)
-    genererMessageMatinal(dossiersAujourdhui)
+    genererMessageMatinal(dossiers)
       .then(msg => {
         if (msg) {
           setMessage(msg)
-          sessionStorage.setItem('morning-message', msg)
-          sessionStorage.setItem('morning-message-date', today)
+          localStorage.setItem(MSG_KEY,  msg)
+          localStorage.setItem(DATE_KEY, today)
+          localStorage.setItem(HASH_KEY, dossiersHash(dossiers))
         }
       })
       .catch(() => {})
       .finally(() => setLoadingMsg(false))
   }
 
+  const rafraichirMessage = () => {
+    if (!apiKey || dossiersAujourdhui.length === 0 || loadingMsg) return
+    localStorage.removeItem(MSG_KEY)
+    setMessage(null)
+    generer(dossiersAujourdhui)
+  }
+
   useEffect(() => {
     if (!apiKey || dossiersAujourdhui.length === 0) return
-    const cached     = sessionStorage.getItem('morning-message')
-    const cachedDate = sessionStorage.getItem('morning-message-date')
+    const cached     = localStorage.getItem(MSG_KEY)
+    const cachedDate = localStorage.getItem(DATE_KEY)
+    const cachedHash = localStorage.getItem(HASH_KEY)
     const today      = new Date().toDateString()
+    const hash       = dossiersHash(dossiersAujourdhui)
 
-    if (cached && cachedDate === today) {
+    // Utiliser le cache si : même jour ET dossiers inchangés
+    if (cached && cachedDate === today && cachedHash === hash) {
       setMessage(cached)
       return
     }
 
-    setLoadingMsg(true)
-    genererMessageMatinal(dossiersAujourdhui)
-      .then(msg => {
-        if (msg) {
-          setMessage(msg)
-          sessionStorage.setItem('morning-message', msg)
-          sessionStorage.setItem('morning-message-date', today)
-        }
-      })
-      .catch(() => {})
-      .finally(() => setLoadingMsg(false))
+    generer(dossiersAujourdhui)
   }, [apiKey, dossiersAujourdhui.length])
 
   if (loading) {

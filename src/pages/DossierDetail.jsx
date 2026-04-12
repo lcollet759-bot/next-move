@@ -31,14 +31,52 @@ function formatDateTime(iso) {
 }
 
 function getBadgeClass(etat) {
-  const map = {
-    actionnable:     'badge-actionnable',
-    attente_externe: 'badge-attente',
-    bloque:          'badge-bloque',
-    surveille:       'badge-surveille',
-    clos:            'badge-clos'
-  }
+  const map = { actionnable: 'badge-actionnable', attente_externe: 'badge-attente', bloque: 'badge-bloque', surveille: 'badge-surveille', clos: 'badge-clos' }
   return map[etat] || 'badge-surveille'
+}
+
+// Champ inline générique : tap pour éditer, blur pour sauvegarder
+function InlineField({ value, onSave, multiline = false, placeholder = '', style = {}, className = '' }) {
+  const [editing, setEditing] = useState(false)
+  const [draft,   setDraft]   = useState(value)
+  const ref = useRef(null)
+
+  useEffect(() => { setDraft(value) }, [value])
+  useEffect(() => { if (editing) ref.current?.focus() }, [editing])
+
+  const commit = () => {
+    setEditing(false)
+    if (draft !== value) onSave(draft)
+  }
+
+  const commonProps = {
+    ref,
+    value: draft,
+    onChange: e => setDraft(e.target.value),
+    onBlur: commit,
+    onKeyDown: e => { if (!multiline && e.key === 'Enter') { e.preventDefault(); commit() } if (e.key === 'Escape') { setDraft(value); setEditing(false) } },
+    style: { ...style, width: '100%' },
+    className: `inline-input ${className}`,
+    autoComplete: 'off',
+  }
+
+  if (!editing) {
+    return (
+      <div
+        className={`inline-display ${className}`}
+        style={style}
+        onClick={() => setEditing(true)}
+        title="Toucher pour modifier"
+      >
+        {value || <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>{placeholder}</span>}
+        <span className="inline-edit-icon">✎</span>
+      </div>
+    )
+  }
+
+  return multiline
+    ? <textarea {...commonProps} rows={3} className={`input textarea inline-input ${className}`} />
+    : <input {...commonProps} type="text" className={`input inline-input ${className}`} />
 }
 
 export default function DossierDetail() {
@@ -48,23 +86,27 @@ export default function DossierDetail() {
 
   const dossier = dossiers.find(d => d.id === id)
   const [journal,          setJournal]          = useState([])
-  const [showEtatSheet,    setShowEtatSheet]    = useState(false)
-  const [showConfirmClose, setShowConfirmClose] = useState(false)
-  const [showConfirmDel,   setShowConfirmDel]   = useState(false)
-  const [newTache,         setNewTache]         = useState('')
-  const [editingTitre,     setEditingTitre]     = useState(false)
-  const [titre,            setTitre]            = useState('')
-  const [showEcheance,     setShowEcheance]     = useState(false)
-  const [echeance,         setEcheance]         = useState('')
-  const newTacheRef = useRef(null)
+  const [showEtatSheet,    setShowEtatSheet]     = useState(false)
+  const [showConfirmClose, setShowConfirmClose]  = useState(false)
+  const [showConfirmDel,   setShowConfirmDel]    = useState(false)
+  const [newTache,         setNewTache]          = useState('')
+  const [showEcheance,     setShowEcheance]      = useState(false)
+  const [echeance,         setEcheance]          = useState('')
+  const [editingTacheId,   setEditingTacheId]    = useState(null)
+  const [tacheDraft,       setTacheDraft]        = useState('')
+  const newTacheRef   = useRef(null)
+  const tacheInputRef = useRef(null)
 
   useEffect(() => {
     if (dossier) {
-      setTitre(dossier.titre)
       setEcheance(dossier.echeance || '')
       getJournalForDossier(id).then(setJournal)
     }
   }, [dossier, id])
+
+  useEffect(() => {
+    if (editingTacheId) tacheInputRef.current?.focus()
+  }, [editingTacheId])
 
   if (!dossier) {
     return (
@@ -80,40 +122,16 @@ export default function DossierDetail() {
     )
   }
 
-  const isClos    = dossier.etat === 'clos'
+  const isClos     = dossier.etat === 'clos'
   const tachesDone = dossier.taches.filter(t => t.done).length
 
-  const handleEtatChange = async (etat) => {
-    haptic('light')
-    await mettreAJourDossier(id, { etat })
-    setShowEtatSheet(false)
-    getJournalForDossier(id).then(setJournal)
-  }
+  const save = (updates) => mettreAJourDossier(id, updates).then(() => getJournalForDossier(id).then(setJournal))
 
-  const handleClose = async () => {
-    haptic('success')
-    await mettreAJourDossier(id, { etat: 'clos' })
-    setShowConfirmClose(false)
-    navigate('/dossiers')
-  }
+  const handleEtatChange = async (etat) => { haptic('light'); await save({ etat }); setShowEtatSheet(false) }
+  const handleClose      = async ()      => { haptic('success'); await save({ etat: 'clos' }); setShowConfirmClose(false); navigate('/dossiers') }
+  const handleDelete     = async ()      => { haptic('medium'); await supprimerDossier(id); navigate('/dossiers') }
 
-  const handleDelete = async () => {
-    haptic('medium')
-    await supprimerDossier(id)
-    navigate('/dossiers')
-  }
-
-  const handleTitreSave = async () => {
-    if (titre.trim() && titre !== dossier.titre) {
-      await mettreAJourDossier(id, { titre: titre.trim() })
-    }
-    setEditingTitre(false)
-  }
-
-  const handleEcheanceSave = async () => {
-    await mettreAJourDossier(id, { echeance: echeance || null })
-    setShowEcheance(false)
-  }
+  const handleEcheanceSave = async () => { await save({ echeance: echeance || null }); setShowEcheance(false) }
 
   const handleAddTache = async (e) => {
     e.preventDefault()
@@ -121,6 +139,22 @@ export default function DossierDetail() {
     await ajouterTache(id, newTache.trim())
     setNewTache('')
     newTacheRef.current?.focus()
+  }
+
+  const handleTacheEdit = (tache) => {
+    setEditingTacheId(tache.id)
+    setTacheDraft(tache.titre)
+  }
+
+  const handleTacheEditSave = async () => {
+    if (!editingTacheId) return
+    const tache = dossier.taches.find(t => t.id === editingTacheId)
+    if (tache && tacheDraft.trim() && tacheDraft.trim() !== tache.titre) {
+      const taches  = dossier.taches.map(t => t.id === editingTacheId ? { ...t, titre: tacheDraft.trim() } : t)
+      await mettreAJourDossier(id, { taches })
+    }
+    setEditingTacheId(null)
+    setTacheDraft('')
   }
 
   return (
@@ -131,50 +165,54 @@ export default function DossierDetail() {
           <button className="btn btn-ghost btn-sm" onClick={() => navigate(-1)}>← Retour</button>
           <div className="row" style={{ gap: 6 }}>
             <QuadrantBadge quadrant={dossier.quadrant} />
-            <button
-              className={`badge ${getBadgeClass(dossier.etat)}`}
-              style={{ cursor: isClos ? 'default' : 'pointer', border: 'none' }}
-              onClick={() => !isClos && setShowEtatSheet(true)}
-            >
-              {ETATS_LABELS[dossier.etat] || dossier.etat}
-              {!isClos && ' ↓'}
+            <button className={`badge ${getBadgeClass(dossier.etat)}`} style={{ cursor: isClos ? 'default' : 'pointer', border: 'none' }} onClick={() => !isClos && setShowEtatSheet(true)}>
+              {ETATS_LABELS[dossier.etat] || dossier.etat}{!isClos && ' ↓'}
             </button>
           </div>
         </div>
 
-        {editingTitre ? (
-          <input
-            className="input"
-            value={titre}
-            onChange={e => setTitre(e.target.value)}
-            onBlur={handleTitreSave}
-            onKeyDown={e => e.key === 'Enter' && handleTitreSave()}
-            autoFocus
-            style={{ fontSize: 20, fontWeight: 600 }}
-          />
+        {/* Titre éditable inline */}
+        {isClos ? (
+          <h1 className="page-title">{dossier.titre}</h1>
         ) : (
-          <h1
-            className="page-title"
-            onClick={() => !isClos && setEditingTitre(true)}
-            style={{ cursor: isClos ? 'default' : 'text' }}
-          >
-            {dossier.titre}
-          </h1>
+          <InlineField
+            value={dossier.titre}
+            onSave={v => save({ titre: v })}
+            placeholder="Titre du dossier"
+            className="page-title-inline"
+            style={{ fontSize: 22, fontWeight: 600, color: 'var(--text)' }}
+          />
         )}
 
-        {dossier.organisme && (
-          <p className="page-subtitle" style={{ marginTop: 4 }}>{dossier.organisme}</p>
+        {/* Organisme éditable inline */}
+        {isClos ? (
+          dossier.organisme && <p className="page-subtitle" style={{ marginTop: 4 }}>{dossier.organisme}</p>
+        ) : (
+          <InlineField
+            value={dossier.organisme || ''}
+            onSave={v => save({ organisme: v || null })}
+            placeholder="Ajouter un organisme…"
+            style={{ fontSize: 14, color: 'var(--text-muted)', marginTop: 4 }}
+          />
         )}
       </div>
 
-      {/* Description */}
-      {dossier.description && (
-        <div className="section">
-          <div className="card" style={{ fontSize: 14, color: 'var(--text-muted)', lineHeight: 1.6 }}>
-            {dossier.description}
-          </div>
+      {/* Description éditable inline */}
+      <div className="section">
+        <div className="card" style={{ fontSize: 14, color: 'var(--text-muted)', lineHeight: 1.6 }}>
+          {isClos ? (
+            dossier.description || <span style={{ fontStyle: 'italic' }}>Aucune description</span>
+          ) : (
+            <InlineField
+              value={dossier.description || ''}
+              onSave={v => save({ description: v })}
+              multiline
+              placeholder="Ajouter une description…"
+              style={{ fontSize: 14, color: 'var(--text-muted)', lineHeight: 1.6 }}
+            />
+          )}
         </div>
-      )}
+      </div>
 
       {/* Raison priorité */}
       {dossier.raisonAujourdhui && (
@@ -191,8 +229,7 @@ export default function DossierDetail() {
           <div className="row-between">
             <div className="row">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" strokeLinecap="round" style={{ flexShrink: 0 }}>
-                <circle cx="12" cy="12" r="10"/>
-                <polyline points="12 6 12 12 16 14"/>
+                <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
               </svg>
               <div>
                 <div style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 500 }}>Échéance</div>
@@ -231,17 +268,29 @@ export default function DossierDetail() {
               >
                 {tache.done && '✓'}
               </button>
-              <span className={`tache-titre ${tache.done ? 'tache-titre-done' : ''}`}>
-                {tache.titre}
-              </span>
-              {!isClos && (
-                <button
-                  className="tache-del"
-                  onClick={() => supprimerTache(id, tache.id)}
-                  aria-label="Supprimer"
+
+              {/* Titre de tâche éditable inline */}
+              {editingTacheId === tache.id ? (
+                <input
+                  ref={tacheInputRef}
+                  className="tache-edit-input"
+                  value={tacheDraft}
+                  onChange={e => setTacheDraft(e.target.value)}
+                  onBlur={handleTacheEditSave}
+                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleTacheEditSave() } if (e.key === 'Escape') { setEditingTacheId(null) } }}
+                />
+              ) : (
+                <span
+                  className={`tache-titre ${tache.done ? 'tache-titre-done' : ''}`}
+                  onClick={() => !isClos && !tache.done && handleTacheEdit(tache)}
+                  style={{ cursor: !isClos && !tache.done ? 'text' : 'default' }}
                 >
-                  ×
-                </button>
+                  {tache.titre}
+                </span>
+              )}
+
+              {!isClos && (
+                <button className="tache-del" onClick={() => supprimerTache(id, tache.id)} aria-label="Supprimer">×</button>
               )}
             </div>
           ))}
@@ -260,34 +309,15 @@ export default function DossierDetail() {
         </div>
       </div>
 
-      {/* Suggestion de clôture quand toutes les tâches sont cochées */}
+      {/* Suggestion de clôture */}
       {!isClos && dossier.taches.length > 0 && dossier.taches.every(t => t.done) && (
         <div className="section">
-          <div style={{
-            background: 'var(--green-light)',
-            border: '1px solid var(--green)',
-            borderRadius: 'var(--radius)',
-            padding: '14px 16px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 12
-          }}>
+          <div style={{ background: 'var(--green-light)', border: '1px solid var(--green)', borderRadius: 'var(--radius)', padding: '14px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
             <div>
-              <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--green)', marginBottom: 2 }}>
-                Toutes les tâches sont complétées
-              </div>
-              <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
-                Ce dossier est prêt à être clôturé.
-              </div>
+              <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--green)', marginBottom: 2 }}>Toutes les tâches sont complétées</div>
+              <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Ce dossier est prêt à être clôturé.</div>
             </div>
-            <button
-              className="btn btn-primary btn-sm"
-              style={{ flexShrink: 0 }}
-              onClick={() => { haptic('light'); setShowConfirmClose(true) }}
-            >
-              Clôturer
-            </button>
+            <button className="btn btn-primary btn-sm" style={{ flexShrink: 0 }} onClick={() => { haptic('light'); setShowConfirmClose(true) }}>Clôturer</button>
           </div>
         </div>
       )}
@@ -295,16 +325,8 @@ export default function DossierDetail() {
       {/* Actions */}
       {!isClos && (
         <div className="section">
-          <button
-            className="btn btn-primary btn-full"
-            style={{ marginBottom: 10 }}
-            onClick={() => setShowConfirmClose(true)}
-          >
-            Clôturer ce dossier
-          </button>
-          <button className="btn btn-danger btn-full btn-sm" onClick={() => setShowConfirmDel(true)}>
-            Supprimer définitivement
-          </button>
+          <button className="btn btn-primary btn-full" style={{ marginBottom: 10 }} onClick={() => setShowConfirmClose(true)}>Clôturer ce dossier</button>
+          <button className="btn btn-danger btn-full btn-sm" onClick={() => setShowConfirmDel(true)}>Supprimer définitivement</button>
         </div>
       )}
 
@@ -330,11 +352,7 @@ export default function DossierDetail() {
           <div className="sheet" onClick={e => e.stopPropagation()}>
             <h3 style={{ fontSize: 18, fontWeight: 600, marginBottom: 16 }}>Changer l'état</h3>
             {ETATS.map(e => (
-              <button
-                key={e.key}
-                className={`etat-option ${dossier.etat === e.key ? 'etat-option-active' : ''}`}
-                onClick={() => handleEtatChange(e.key)}
-              >
+              <button key={e.key} className={`etat-option ${dossier.etat === e.key ? 'etat-option-active' : ''}`} onClick={() => handleEtatChange(e.key)}>
                 <EtatBadge etat={e.key} />
                 <span className="etat-desc">{e.desc}</span>
               </button>
@@ -348,9 +366,7 @@ export default function DossierDetail() {
         <div className="overlay" onClick={() => setShowConfirmClose(false)}>
           <div className="sheet" onClick={e => e.stopPropagation()}>
             <h3 style={{ fontSize: 18, fontWeight: 600, marginBottom: 8 }}>Clôturer ce dossier ?</h3>
-            <p style={{ fontSize: 14, color: 'var(--text-muted)', marginBottom: 20 }}>
-              Le dossier sera archivé. Vous pourrez le consulter dans l'onglet Clôturés.
-            </p>
+            <p style={{ fontSize: 14, color: 'var(--text-muted)', marginBottom: 20 }}>Le dossier sera archivé. Vous pourrez le consulter dans l'onglet Clôturés.</p>
             <div style={{ display: 'flex', gap: 10 }}>
               <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => setShowConfirmClose(false)}>Annuler</button>
               <button className="btn btn-primary" style={{ flex: 2 }} onClick={handleClose}>Confirmer</button>
@@ -364,9 +380,7 @@ export default function DossierDetail() {
         <div className="overlay" onClick={() => setShowConfirmDel(false)}>
           <div className="sheet" onClick={e => e.stopPropagation()}>
             <h3 style={{ fontSize: 18, fontWeight: 600, marginBottom: 8 }}>Supprimer ce dossier ?</h3>
-            <p style={{ fontSize: 14, color: 'var(--text-muted)', marginBottom: 20 }}>
-              Cette action est irréversible. Toutes les données du dossier seront effacées.
-            </p>
+            <p style={{ fontSize: 14, color: 'var(--text-muted)', marginBottom: 20 }}>Cette action est irréversible. Toutes les données du dossier seront effacées.</p>
             <div style={{ display: 'flex', gap: 10 }}>
               <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => setShowConfirmDel(false)}>Annuler</button>
               <button className="btn btn-danger" style={{ flex: 2 }} onClick={handleDelete}>Supprimer</button>
@@ -380,13 +394,7 @@ export default function DossierDetail() {
         <div className="overlay" onClick={() => setShowEcheance(false)}>
           <div className="sheet" onClick={e => e.stopPropagation()}>
             <h3 style={{ fontSize: 18, fontWeight: 600, marginBottom: 16 }}>Définir une échéance</h3>
-            <input
-              type="date"
-              className="input"
-              value={echeance}
-              onChange={e => setEcheance(e.target.value)}
-              style={{ marginBottom: 16 }}
-            />
+            <input type="date" className="input" value={echeance} onChange={e => setEcheance(e.target.value)} style={{ marginBottom: 16 }} />
             <div style={{ display: 'flex', gap: 10 }}>
               <button className="btn btn-ghost btn-sm" onClick={() => { setEcheance(''); handleEcheanceSave() }}>Supprimer</button>
               <button className="btn btn-primary" style={{ flex: 1 }} onClick={handleEcheanceSave}>Confirmer</button>
@@ -396,76 +404,40 @@ export default function DossierDetail() {
       )}
 
       <style>{`
-        .tache-row {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          padding: 10px 4px;
-          border-bottom: 1px solid var(--border);
-          min-height: 44px;
+        .inline-display {
+          position: relative;
+          cursor: text;
+          padding: 2px 24px 2px 0;
+          border-radius: 4px;
+          transition: background 0.12s;
+          min-height: 24px;
         }
+        .inline-display:hover { background: var(--gray-light); }
+        .inline-edit-icon {
+          position: absolute;
+          right: 4px;
+          top: 50%;
+          transform: translateY(-50%);
+          font-size: 11px;
+          color: var(--text-muted);
+          opacity: 0;
+          transition: opacity 0.12s;
+        }
+        .inline-display:hover .inline-edit-icon { opacity: 1; }
+        .page-title-inline { font-size: 22px !important; font-weight: 600 !important; line-height: 1.3; }
+        .tache-row { display: flex; align-items: center; gap: 10px; padding: 10px 4px; border-bottom: 1px solid var(--border); min-height: 44px; }
         .tache-row:last-of-type { border-bottom: none; }
-        .tache-check {
-          width: 22px;
-          height: 22px;
-          border-radius: 6px;
-          border: 2px solid var(--border);
-          background: transparent;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 12px;
-          color: white;
-          flex-shrink: 0;
-          transition: all 0.15s;
-          min-width: 22px;
-        }
+        .tache-check { width: 22px; height: 22px; border-radius: 6px; border: 2px solid var(--border); background: transparent; display: flex; align-items: center; justify-content: center; font-size: 12px; color: white; flex-shrink: 0; transition: all 0.15s; min-width: 22px; }
         .tache-done { background: var(--green); border-color: var(--green); }
         .tache-titre { flex: 1; font-size: 14px; color: var(--text); }
         .tache-titre-done { text-decoration: line-through; color: var(--text-muted); }
-        .tache-del {
-          border: none;
-          background: none;
-          color: var(--text-muted);
-          font-size: 20px;
-          padding: 0 6px;
-          cursor: pointer;
-          opacity: 0.4;
-          transition: opacity 0.15s;
-          min-width: 32px;
-          min-height: 32px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-        }
+        .tache-edit-input { flex: 1; border: none; border-bottom: 1.5px solid var(--green); outline: none; font-size: 14px; color: var(--text); background: transparent; font-family: inherit; padding: 2px 4px; }
+        .tache-del { border: none; background: none; color: var(--text-muted); font-size: 20px; padding: 0 6px; cursor: pointer; opacity: 0.4; transition: opacity 0.15s; min-width: 32px; min-height: 32px; display: flex; align-items: center; justify-content: center; }
         .tache-del:hover { opacity: 1; }
         .tache-add-form { padding: 6px 4px; }
-        .tache-add-input {
-          width: 100%;
-          border: none;
-          outline: none;
-          font-size: 14px;
-          color: var(--text-muted);
-          background: transparent;
-          font-family: inherit;
-          padding: 2px 0;
-          min-height: 36px;
-        }
+        .tache-add-input { width: 100%; border: none; outline: none; font-size: 14px; color: var(--text-muted); background: transparent; font-family: inherit; padding: 2px 0; min-height: 36px; }
         .tache-add-input::placeholder { color: var(--border); }
-        .etat-option {
-          width: 100%;
-          display: flex;
-          align-items: center;
-          gap: 12px;
-          padding: 12px;
-          border: 1.5px solid var(--border);
-          border-radius: var(--radius-sm);
-          background: transparent;
-          cursor: pointer;
-          margin-bottom: 8px;
-          transition: border-color 0.15s;
-          min-height: 52px;
-        }
+        .etat-option { width: 100%; display: flex; align-items: center; gap: 12px; padding: 12px; border: 1.5px solid var(--border); border-radius: var(--radius-sm); background: transparent; cursor: pointer; margin-bottom: 8px; transition: border-color 0.15s; min-height: 52px; }
         .etat-option:hover { border-color: var(--green); }
         .etat-option-active { border-color: var(--green); background: var(--green-light); }
         .etat-desc { font-size: 13px; color: var(--text-muted); }

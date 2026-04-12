@@ -60,6 +60,11 @@ const CONTEXTE_SUISSE = `Tu es l'assistant IA de Next Move, au service d'un util
 Contexte : administration helvétique (confédération, cantons, communes), organismes suisses (CFF, La Poste, SUVA, AVS/AI, caisses cantonales, offices des migrations, services communaux, assurances-maladie LAMal, OFAS, etc.).
 Monnaie : CHF (francs suisses). Langue : français suisse. Ton : direct, concis, sans jargon.`
 
+// ── Règle de détection du statut initial ──────────────────────────────────
+const REGLE_ETAT = `Règles pour le champ "etat" :
+- "attente_externe" si la situation implique d'attendre une réponse ou décision d'un tiers : mots-clés "attendre", "en attente", "en cours de traitement", "dossier en cours", "réponse attendue", "délai d'instruction", "sous examen", "traitement en cours", "nous reviendrons", "sera traité"
+- "actionnable" dans tous les autres cas (action immédiate possible)`
+
 // ── Règles communes pour les tâches ───────────────────────────────────────
 const REGLES_TACHES = `Règles pour le champ "taches" :
 - 3 à 6 tâches maximum, ordonnées dans l'ordre logique d'exécution
@@ -92,12 +97,15 @@ Analyse la situation décrite et retourne UNIQUEMENT un objet JSON valide avec c
   "urgence": true si échéance ≤ 7 jours ou situation critique, sinon false,
   "importance": true si les conséquences sont significatives (financières, légales, relationnelles), sinon false,
   "echeance": "YYYY-MM-DD" ou null,
+  "etat": "actionnable" ou "attente_externe",
   "raisonPriorite": "une phrase directe expliquant pourquoi agir maintenant ou bientôt"
 }
 
 ${REGLES_TACHES}
 
 ${REGLES_DATES}
+
+${REGLE_ETAT}
 
 Pas de texte avant ou après le JSON.`
 
@@ -129,12 +137,15 @@ Retourne UNIQUEMENT un objet JSON valide :
   "urgence": true si échéance ≤ 7 jours ou retard, sinon false,
   "importance": true si conséquences financières/légales/administratives significatives, sinon false,
   "echeance": "YYYY-MM-DD" ou null,
+  "etat": "actionnable" ou "attente_externe",
   "raisonPriorite": "une phrase directe sur l'action requise et son délai"
 }
 
 ${REGLES_TACHES}
 
 ${REGLES_DATES}
+
+${REGLE_ETAT}
 
 Pas de texte avant ou après le JSON.`
 
@@ -224,6 +235,7 @@ Retourne UNIQUEMENT un tableau JSON valide (array) de dossiers :
     "urgence": true si échéance ≤ 7 jours ou situation critique, sinon false,
     "importance": true si les conséquences sont significatives (financières, légales, relationnelles), sinon false,
     "echeance": "YYYY-MM-DD" ou null,
+    "etat": "actionnable" ou "attente_externe",
     "raisonPriorite": "une phrase directe expliquant pourquoi agir maintenant ou bientôt"
   },
   ...
@@ -232,6 +244,8 @@ Retourne UNIQUEMENT un tableau JSON valide (array) de dossiers :
 ${REGLES_TACHES}
 
 ${REGLES_DATES}
+
+${REGLE_ETAT}
 
 Règles de découpage :
 - Crée un dossier distinct par sujet (une facture = un dossier, une démarche = un dossier, un projet = un dossier)

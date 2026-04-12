@@ -281,13 +281,18 @@ export function AppProvider({ children }) {
     const urgence   = data.urgence   ?? false
     const importance = data.importance ?? true
 
+    // Valider l'état suggéré par l'IA (point 7 : attente_externe auto-détecté)
+    const etatValide = ['actionnable', 'attente_externe', 'surveille', 'bloque'].includes(data.etat)
+      ? data.etat
+      : 'actionnable'
+
     const dossier = {
       id:              uuid(),
       titre,
       organisme:       (data.organisme || '').trim() || null,
       origine:         data.origine || 'texte',
       type:            data.type    || 'vivant',
-      etat:            'actionnable',
+      etat:            etatValide,
       urgence,
       importance,
       quadrant:        calcQuadrant(urgence, importance),
