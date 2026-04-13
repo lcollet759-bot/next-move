@@ -19,13 +19,18 @@ function IconEye({ open }) {
 }
 
 export default function Reglages() {
-  const { apiKey, setApiKey, dossiers, journal } = useApp()
+  const { apiKey, setApiKey, openaiKey, setOpenaiKey, dossiers, journal } = useApp()
   const { logout } = useAuth()
 
-  // Clé API
+  // Clé API Anthropic
   const [keyInput,    setKeyInput]    = useState(apiKey)
   const [keyVisible,  setKeyVisible]  = useState(false)
   const [saved,       setSaved]       = useState(false)
+
+  // Clé API OpenAI
+  const [oaiInput,   setOaiInput]   = useState(openaiKey)
+  const [oaiVisible, setOaiVisible] = useState(false)
+  const [oaiSaved,   setOaiSaved]   = useState(false)
 
   // Notifications
   const [notifStatus, setNotifStatus] = useState(
@@ -36,6 +41,12 @@ export default function Reglages() {
     setApiKey(keyInput.trim())
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)
+  }
+
+  const handleSaveOaiKey = () => {
+    setOpenaiKey(oaiInput.trim())
+    setOaiSaved(true)
+    setTimeout(() => setOaiSaved(false), 2000)
   }
 
   const handleNotif = async () => {
@@ -99,6 +110,47 @@ export default function Reglages() {
           {apiKey && (
             <div style={{ marginTop: 10, padding: '8px 12px', background: 'var(--green-light)', borderRadius: 'var(--radius-sm)', fontSize: 13, color: 'var(--green)' }}>
               Clé configurée · Modèle : claude-sonnet-4-20250514
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Clé OpenAI — Whisper */}
+      <div className="section">
+        <div className="settings-section-title">Transcription vocale</div>
+        <div className="card">
+          <label className="label">Clé API OpenAI (Whisper)</label>
+          <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 10, lineHeight: 1.5 }}>
+            Nécessaire pour la dictée vocale. Obtenez votre clé sur{' '}
+            <span style={{ color: 'var(--green)' }}>platform.openai.com</span>.
+          </p>
+          <div style={{ position: 'relative', marginBottom: 10 }}>
+            <input
+              className="input"
+              type={oaiVisible ? 'text' : 'password'}
+              placeholder="sk-…"
+              value={oaiInput}
+              onChange={e => setOaiInput(e.target.value)}
+              style={{ paddingRight: 44 }}
+            />
+            <button
+              onClick={() => setOaiVisible(v => !v)}
+              style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', border: 'none', background: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex' }}
+              aria-label={oaiVisible ? 'Masquer' : 'Afficher'}
+            >
+              <IconEye open={oaiVisible} />
+            </button>
+          </div>
+          <button
+            className={`btn btn-full ${oaiSaved ? 'btn-secondary' : 'btn-primary'}`}
+            onClick={handleSaveOaiKey}
+            disabled={!oaiInput.trim() || oaiInput === openaiKey}
+          >
+            {oaiSaved ? 'Sauvegardé' : 'Sauvegarder la clé'}
+          </button>
+          {openaiKey && (
+            <div style={{ marginTop: 10, padding: '8px 12px', background: 'var(--green-light)', borderRadius: 'var(--radius-sm)', fontSize: 13, color: 'var(--green)' }}>
+              Clé configurée · Modèle : whisper-1
             </div>
           )}
         </div>

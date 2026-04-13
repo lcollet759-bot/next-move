@@ -162,20 +162,26 @@ export default function Aujourdhui() {
         <div className="section">
           <div className="morning-card">
             <div className="morning-dot" />
-            {loadingMsg ? (
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flex: 1 }}>
-                <div className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} />
-                <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>Préparation du résumé…</span>
-              </div>
-            ) : (
-              <p className="morning-text" style={{ flex: 1 }}>{renderMarkdown(message)}</p>
-            )}
-            {!loadingMsg && apiKey && (
+            <div style={{ flex: 1 }}>
+              {/* Texte affiché dès réception, indépendamment de loadingMsg */}
+              {message && (
+                <p className="morning-text">{renderMarkdown(message)}</p>
+              )}
+              {/* Spinner uniquement si chargement ET pas encore de texte */}
+              {loadingMsg && !message && (
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <div className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} />
+                  <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>Préparation du résumé…</span>
+                </div>
+              )}
+            </div>
+            {!loadingMsg && apiKey && message && (
               <button
                 className="refresh-btn"
                 onClick={rafraichirMessage}
                 aria-label="Rafraîchir le résumé"
                 title="Rafraîchir"
+                style={{ alignSelf: 'flex-start' }}
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                   <polyline points="23 4 23 10 17 10"/>

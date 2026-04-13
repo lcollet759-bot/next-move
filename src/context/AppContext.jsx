@@ -138,10 +138,11 @@ function validateDossier(data) {
 // ── Reducer ───────────────────────────────────────────────────────────────────
 
 const init = {
-  dossiers: [],
-  journal:  [],
-  loading:  true,
-  apiKey:   localStorage.getItem('anthropic_api_key') || ''
+  dossiers:   [],
+  journal:    [],
+  loading:    true,
+  apiKey:     localStorage.getItem('anthropic_api_key') || '',
+  openaiKey:  localStorage.getItem('openai_api_key')   || ''
 }
 
 function reducer(state, action) {
@@ -158,6 +159,8 @@ function reducer(state, action) {
       return { ...state, journal: [action.entry, ...state.journal] }
     case 'SET_API_KEY':
       return { ...state, apiKey: action.key }
+    case 'SET_OPENAI_KEY':
+      return { ...state, openaiKey: action.key }
     default:
       return state
   }
@@ -405,6 +408,11 @@ export function AppProvider({ children }) {
     dispatch({ type: 'SET_API_KEY', key })
   }, [])
 
+  const setOpenaiKey = useCallback((key) => {
+    localStorage.setItem('openai_api_key', key)
+    dispatch({ type: 'SET_OPENAI_KEY', key })
+  }, [])
+
   // ── Valeurs dérivées ──────────────────────────────────────────────────────
   const dossiersActifs    = state.dossiers.filter(d => d.etat !== 'clos')
   const dossiersAujourdhui = [...dossiersActifs]
@@ -422,7 +430,8 @@ export function AppProvider({ children }) {
       ajouterTache,
       supprimerTache,
       supprimerDossier,
-      setApiKey
+      setApiKey,
+      setOpenaiKey
     }}>
       {children}
     </AppContext.Provider>
