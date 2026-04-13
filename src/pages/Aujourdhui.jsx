@@ -64,25 +64,33 @@ export default function Aujourdhui() {
   const generatingRef = useRef(false)
 
   async function generer(dossiers) {
-    if (generatingRef.current) return
+    if (generatingRef.current) {
+      console.log('[Morning] already generating, skipped')
+      return
+    }
     generatingRef.current = true
     const today = new Date().toDateString()
+    console.log('[Morning] 1. start — dossiers:', dossiers.length, 'apiKey set:', !!localStorage.getItem('anthropic_api_key'))
     setLoadingMsg(true)
     try {
       const msg = await genererMessageMatinal(dossiers)
+      console.log('[Morning] 2. API response — msg type:', typeof msg, 'length:', msg?.length, 'preview:', msg?.slice(0, 60))
       if (msg) {
-        // Les deux mises à jour d'état se font dans le même contexte synchrone
-        // → React 18 les batche en un seul rendu, le message reste affiché
         setMessage(msg)
+        console.log('[Morning] 3. setMessage called — msg length:', msg.length)
         localStorage.setItem(MSG_KEY,  msg)
         localStorage.setItem(DATE_KEY, today)
         localStorage.setItem(HASH_KEY, dossiersHash(dossiers))
+        console.log('[Morning] 4. localStorage saved')
+      } else {
+        console.warn('[Morning] 2b. msg is falsy — not setting state:', msg)
       }
     } catch (err) {
-      console.warn('[Message matinal]', err)
+      console.error('[Morning] ERROR:', err?.message, err)
     } finally {
       setLoadingMsg(false)
       generatingRef.current = false
+      console.log('[Morning] 5. finally — loadingMsg set to false')
     }
   }
 
@@ -109,6 +117,8 @@ export default function Aujourdhui() {
 
     generer(dossiersAujourdhui)
   }, [apiKey, dossiersAujourdhui.length])
+
+  console.log('[Morning render] message:', message ? `"${message.slice(0,40)}..."` : message, '| loadingMsg:', loadingMsg)
 
   if (loading) {
     return (
