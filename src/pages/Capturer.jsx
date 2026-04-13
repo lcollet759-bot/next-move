@@ -202,11 +202,6 @@ export default function Capturer() {
   const analyser = useCallback(async () => {
     if (!apiKey) { setError('Clé API requise — configurez-la dans Réglages.'); return }
     const input = (mode === 'Vocal' || mode === 'Brain dump') ? transcript : texte
-    // Point 5 : ne pas appeler l'IA si trop court
-    if (mode !== 'Document' && wordCount(input) < 10) {
-      setError('Décrivez la situation en au moins 10 mots pour obtenir une analyse pertinente.')
-      return
-    }
     setError(''); setLoading(true); setProposition(null); setBrainDumpResult(null)
     try {
       if (mode === 'Brain dump') {
