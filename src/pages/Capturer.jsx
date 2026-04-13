@@ -100,10 +100,23 @@ export default function Capturer() {
   }, [])
 
   // ── Vocal : mode entièrement manuel ──────────────────────────────────────
-  const startRecording = useCallback(() => {
+  const startRecording = useCallback(async () => {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition
-    console.log('[Vocal] startRecording — SR disponible:', !!SR, '| isRecordingRef:', isRecordingRef.current)
     if (!SR) { setError('Dictée vocale non supportée sur ce navigateur.'); return }
+
+    // Chrome HTTPS exige une permission micro explicite via getUserMedia
+    // AVANT d'autoriser la Web Speech API — sinon : onerror 'aborted' en boucle
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      // On n'a besoin que de la permission, pas du stream brut
+      stream.getTracks().forEach(t => t.stop())
+    } catch (err) {
+      const msg = err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError'
+        ? 'Permission microphone refusée. Autorisez le micro dans les paramètres de Chrome (icône 🔒 dans la barre d\'adresse).'
+        : `Microphone inaccessible : ${err.message}`
+      setError(msg)
+      return
+    }
 
     setTranscript('')
     setError('')
@@ -115,10 +128,8 @@ export default function Capturer() {
       recognition.lang           = 'fr-FR'
       recognition.interimResults = true
       recognition.continuous     = true
-      console.log('[Vocal] createAndStart — recognition créé, lang:', recognition.lang, 'continuous:', recognition.continuous)
 
       recognition.onresult = (e) => {
-        console.log('[Vocal] onresult — results.length:', e.results.length, '| resultIndex:', e.resultIndex)
         let finals  = ''
         let interim = ''
         for (let i = 0; i < e.results.length; i++) {
@@ -126,15 +137,10 @@ export default function Capturer() {
           else                      interim += e.results[i][0].transcript
         }
         const next = finals + interim
-        console.log('[Vocal] transcript → finals:', JSON.stringify(finals.slice(0, 60)), '| interim:', JSON.stringify(interim.slice(0, 40)))
 
-        // Détection de répétition anormale (comportement Brave/non-Chrome) :
-        // si le nouveau texte est une répétition d'un segment déjà présent,
-        // on affiche l'avertissement navigateur.
+        // Détection de répétition anormale (comportement Brave/non-Chrome)
         if (voiceBrowser !== 'warn' && next.length > 20 && prevTranscript.current.length > 0) {
-          const prev = prevTranscript.current
-          // Vérifie si un bloc de 15+ chars du précédent transcript apparaît
-          // dupliqué dans le nouveau (signe de double-envoi du buffer)
+          const prev  = prevTranscript.current
           const chunk = prev.slice(-20).trim()
           if (chunk.length > 10 && next.includes(chunk + chunk.slice(0, 8))) {
             setVoiceBrowser('warn')
@@ -145,21 +151,25 @@ export default function Capturer() {
       }
 
       recognition.onerror = (e) => {
-        console.error('[Vocal] onerror:', e.error, '| isRecordingRef:', isRecordingRef.current)
-        // 'no-speech' et 'audio-capture' sont transitoires — on relance
         if (!isRecordingRef.current) return
-        if (e.error !== 'not-allowed' && e.error !== 'service-not-allowed') {
-          setTimeout(createAndStart, 200)
-        } else {
-          setError(`Microphone non autorisé : ${e.error}`)
+
+        // Erreurs non-récupérables : arrêt immédiat, pas de relance
+        if (['not-allowed', 'service-not-allowed', 'aborted'].includes(e.error)) {
+          const msg = e.error === 'aborted'
+            ? 'Dictée interrompue par Chrome. Vérifiez les permissions micro (🔒 dans la barre d\'adresse).'
+            : 'Microphone non autorisé. Vérifiez les permissions dans les paramètres Chrome.'
+          setError(msg)
           isRecordingRef.current = false
           setRecording(false)
+          return
         }
+
+        // Erreurs transitoires ('no-speech', 'audio-capture', 'network') — relancer
+        setTimeout(createAndStart, 200)
       }
 
-      // onend : relancer si l'utilisateur n'a pas tapé Stop
+      // onend : relancer uniquement si l'utilisateur n'a pas tapé Stop
       recognition.onend = () => {
-        console.log('[Vocal] onend — isRecordingRef:', isRecordingRef.current)
         if (isRecordingRef.current) {
           setTimeout(createAndStart, 100)
         } else {
@@ -168,11 +178,10 @@ export default function Capturer() {
       }
 
       recognitionRef.current = recognition
-      try {
-        recognition.start()
-        console.log('[Vocal] recognition.start() OK')
-      } catch (err) {
-        console.error('[Vocal] recognition.start() a levé une exception:', err)
+      try { recognition.start() } catch (err) {
+        setError('Impossible de démarrer la dictée. Rechargez la page et réessayez.')
+        isRecordingRef.current = false
+        setRecording(false)
       }
     }
 
