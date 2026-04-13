@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useApp } from '../context/AppContext'
 import { genererMessageMatinal } from '../services/claude'
 import DossierCard from '../components/DossierCard'
@@ -61,21 +61,29 @@ export default function Aujourdhui() {
   const { dossiersAujourdhui, loading, apiKey } = useApp()
   const [message,    setMessage]    = useState(null)
   const [loadingMsg, setLoadingMsg] = useState(false)
+  const generatingRef = useRef(false)
 
-  function generer(dossiers) {
+  async function generer(dossiers) {
+    if (generatingRef.current) return
+    generatingRef.current = true
     const today = new Date().toDateString()
     setLoadingMsg(true)
-    genererMessageMatinal(dossiers)
-      .then(msg => {
-        if (msg) {
-          setMessage(msg)
-          localStorage.setItem(MSG_KEY,  msg)
-          localStorage.setItem(DATE_KEY, today)
-          localStorage.setItem(HASH_KEY, dossiersHash(dossiers))
-        }
-      })
-      .catch(() => {})
-      .finally(() => setLoadingMsg(false))
+    try {
+      const msg = await genererMessageMatinal(dossiers)
+      if (msg) {
+        // Les deux mises à jour d'état se font dans le même contexte synchrone
+        // → React 18 les batche en un seul rendu, le message reste affiché
+        setMessage(msg)
+        localStorage.setItem(MSG_KEY,  msg)
+        localStorage.setItem(DATE_KEY, today)
+        localStorage.setItem(HASH_KEY, dossiersHash(dossiers))
+      }
+    } catch (err) {
+      console.warn('[Message matinal]', err)
+    } finally {
+      setLoadingMsg(false)
+      generatingRef.current = false
+    }
   }
 
   const rafraichirMessage = () => {
@@ -105,9 +113,12 @@ export default function Aujourdhui() {
   if (loading) {
     return (
       <div className="page">
-        <div className="page-header">
-          <p className="page-subtitle skeleton-text" style={{ width: 140, height: 14, marginBottom: 6 }} />
-          <p className="page-title skeleton-text" style={{ width: 100, height: 26 }} />
+        <div className="page-header aj-header">
+          <div className="aj-header-left">
+            <p className="skeleton-text" style={{ width: 120, height: 10, marginBottom: 8 }} />
+            <p className="skeleton-text" style={{ width: 180, height: 32 }} />
+          </div>
+          <div className="skeleton-text" style={{ width: 42, height: 42, borderRadius: '50%', flexShrink: 0 }} />
         </div>
         <div className="section">
           <div className="skeleton-card" style={{ height: 64, marginBottom: 12 }} />
@@ -120,19 +131,25 @@ export default function Aujourdhui() {
 
   return (
     <div className="page">
-      <div className="page-header">
-        <p className="page-subtitle" style={{ textTransform: 'capitalize' }}>{todayFR()}</p>
-        <h1 className="page-title">{greeting()}</h1>
+      <div className="page-header aj-header">
+        <div className="aj-header-left">
+          <p className="aj-date">{todayFR()}</p>
+          <h1 className="aj-title">
+            <span className="aj-greet">{greeting()} </span>
+            <span className="aj-name">Ludovic.</span>
+          </h1>
+        </div>
+        <div className="aj-avatar">L</div>
       </div>
 
       {/* Message matinal IA */}
       {(message || loadingMsg) && (
         <div className="section">
           <div className="morning-card">
-            <div className="morning-icon">✦</div>
+            <div className="morning-dot" />
             {loadingMsg ? (
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                <div className="spinner" style={{ width: 16, height: 16, borderWidth: 2 }} />
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flex: 1 }}>
+                <div className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} />
                 <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>Préparation du résumé…</span>
               </div>
             ) : (
@@ -157,7 +174,7 @@ export default function Aujourdhui() {
 
       {!apiKey && (
         <div className="section">
-          <div className="morning-card" style={{ background: 'var(--amber-light)', borderColor: 'var(--amber)' }}>
+          <div className="morning-card" style={{ borderColor: 'var(--amber)', background: 'var(--amber-light)' }}>
             <p style={{ fontSize: 13, color: 'var(--amber)' }}>
               Configurez votre clé API dans <strong>Réglages</strong> pour activer l'IA.
             </p>
@@ -189,20 +206,73 @@ export default function Aujourdhui() {
       </div>
 
       <style>{`
+        /* Header */
+        .aj-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 40px 28px 20px;
+          border-bottom: none;
+        }
+        .aj-header-left { display: flex; flex-direction: column; gap: 4px; }
+        .aj-date {
+          font-size: 10px;
+          font-weight: 600;
+          color: var(--text-muted);
+          text-transform: uppercase;
+          letter-spacing: 2.5px;
+          line-height: 1;
+        }
+        .aj-title {
+          font-size: 32px;
+          line-height: 1.1;
+          letter-spacing: -1.2px;
+          color: var(--text);
+        }
+        .aj-greet { font-weight: 200; }
+        .aj-name  { font-weight: 500; }
+        .aj-avatar {
+          width: 42px;
+          height: 42px;
+          border-radius: 50%;
+          background: var(--text);
+          color: #fff;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 16px;
+          font-weight: 500;
+          flex-shrink: 0;
+          letter-spacing: 0;
+        }
+
+        /* Morning card */
         .morning-card {
-          background: var(--green-light);
-          border: 1px solid #c5dfc9;
-          border-radius: var(--radius);
+          background: var(--surface);
+          border: 1px solid var(--border);
+          border-radius: 14px;
           padding: 14px 16px;
           display: flex;
           gap: 10px;
           align-items: flex-start;
           margin-bottom: 4px;
         }
-        .morning-icon { font-size: 18px; flex-shrink: 0; margin-top: 1px; color: var(--green); }
+        .morning-dot {
+          width: 5px;
+          height: 5px;
+          border-radius: 50%;
+          background: var(--green);
+          flex-shrink: 0;
+          margin-top: 5px;
+          animation: pulse-dot 2s ease-in-out infinite;
+        }
+        @keyframes pulse-dot {
+          0%, 100% { opacity: 1; transform: scale(1); }
+          50%       { opacity: 0.4; transform: scale(0.7); }
+        }
         .refresh-btn {
           flex-shrink: 0;
-          margin-top: 2px;
+          margin-top: 1px;
           border: none;
           background: none;
           color: var(--text-muted);
@@ -214,7 +284,8 @@ export default function Aujourdhui() {
           transition: color 0.15s, background 0.15s;
         }
         .refresh-btn:hover { color: var(--green); background: rgba(0,0,0,0.05); }
-        .morning-text { font-size: 14px; color: var(--text); line-height: 1.55; }
+        .morning-text { font-size: 13px; color: var(--text-secondary); line-height: 1.55; }
+
         .section-label {
           font-size: 12px;
           font-weight: 500;
