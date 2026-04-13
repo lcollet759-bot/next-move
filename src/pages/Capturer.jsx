@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect } from 'react'
+import { useState, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 import { analyserCapture, analyserDocument, analyserBrainDump } from '../services/claude'
@@ -52,13 +52,10 @@ export default function Capturer() {
   const navigate = useNavigate()
   const [mode, setMode] = useState('Texte')
 
-  // Vocal
-  const [recording,     setRecording]     = useState(false)
-  const [transcript,    setTranscript]    = useState('')
-  const [voiceBrowser,  setVoiceBrowser]  = useState(null)  // 'ok' | 'warn'
-  const recognitionRef  = useRef(null)
-  const isRecordingRef  = useRef(false)
-  const accumulatedRef  = useRef('')  // finals de toutes les sessions passées
+  // Vocal / Brain dump — simple textarea, dictée via clavier natif
+  const [transcript, setTranscript] = useState('')
+  const vocalRef    = useRef(null)
+  const brainRef    = useRef(null)
 
   // Document
   const [docFile,    setDocFile]    = useState(null)
@@ -75,88 +72,6 @@ export default function Capturer() {
   const [proposition,     setProposition]     = useState(null)
   const [brainDumpResult, setBrainDumpResult] = useState(null)
   const [saving,          setSaving]          = useState(false)
-
-  // ── Détection navigateur ──────────────────────────────────────────────────
-  useEffect(() => {
-    async function detectBrowser() {
-      const isBrave = navigator.brave
-        ? await navigator.brave.isBrave().catch(() => false)
-        : false
-      if (isBrave) { setVoiceBrowser('warn'); return }
-      const hasAPI = !!(window.SpeechRecognition || window.webkitSpeechRecognition)
-      if (!hasAPI) { setVoiceBrowser('warn'); return }
-      setVoiceBrowser('ok')
-    }
-    detectBrowser()
-  }, [])
-
-  // ── Vocal : Web Speech API, mode manuel ───────────────────────────────────
-  const startRecording = useCallback(() => {
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition
-    if (!SR) { setError('Dictée vocale non supportée sur ce navigateur.'); return }
-
-    setTranscript('')
-    setError('')
-    accumulatedRef.current = ''
-    isRecordingRef.current = true
-
-    function createAndStart() {
-      const recognition = new SR()
-      recognition.lang           = 'fr-FR'
-      recognition.interimResults = true
-      recognition.continuous     = true
-
-      // Finals de la session courante uniquement (variable locale à ce closure)
-      let sessionFinals = ''
-
-      recognition.onresult = (e) => {
-        sessionFinals = ''
-        let interim   = ''
-        for (let i = 0; i < e.results.length; i++) {
-          if (e.results[i].isFinal) sessionFinals += e.results[i][0].transcript
-          else                      interim       += e.results[i][0].transcript
-        }
-        setTranscript(accumulatedRef.current + sessionFinals + interim)
-      }
-
-      // onerror : uniquement les erreurs fatales (permissions).
-      // aborted / no-speech / network → on ne fait rien : onend se chargera du restart.
-      recognition.onerror = (e) => {
-        if (!isRecordingRef.current) return
-        if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
-          setError(`Microphone non autorisé : ${e.error}`)
-          isRecordingRef.current = false
-          setRecording(false)
-        }
-      }
-
-      // onend : seul point de restart — garanti de se déclencher après tout onerror.
-      recognition.onend = () => {
-        if (isRecordingRef.current) {
-          accumulatedRef.current += sessionFinals  // préserver les finals avant restart
-          setTimeout(createAndStart, 150)
-        } else {
-          setRecording(false)
-        }
-      }
-
-      recognitionRef.current = recognition
-      try { recognition.start() } catch {}
-    }
-
-    createAndStart()
-    setRecording(true)
-  }, [])
-
-  const stopRecording = useCallback(() => {
-    isRecordingRef.current = false
-    recognitionRef.current?.stop()
-  }, [])
-
-  const clearTranscript = useCallback(() => {
-    accumulatedRef.current = ''
-    setTranscript('')
-  }, [])
 
   // ── Document ──────────────────────────────────────────────────────────────
   const handleFile = useCallback(async (file) => {
@@ -217,7 +132,7 @@ export default function Capturer() {
 
   const reset = () => {
     setProposition(null); setBrainDumpResult(null)
-    setTexte(''); accumulatedRef.current = ''; setTranscript('')
+    setTexte(''); setTranscript('')
     setDocFile(null); setDocPreview(null); setDocBase64(null); setError('')
   }
 
@@ -328,21 +243,6 @@ export default function Capturer() {
         <p className="page-subtitle">Dictez, écrivez ou importez un document</p>
       </div>
 
-      {voiceBrowser === 'warn' && (mode === 'Vocal' || mode === 'Brain dump') && (
-        <div className="section">
-          <div className="browser-warn">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" style={{ flexShrink: 0, marginTop: 1 }}>
-              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
-              <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
-            </svg>
-            <span>
-              Pour une meilleure expérience vocale, utilisez <strong>Google Chrome</strong>.
-              La dictée peut présenter des répétitions sur Brave et d'autres navigateurs.
-            </span>
-          </div>
-        </div>
-      )}
-
       <div className="section">
         <div className="mode-tabs">
           {MODES.map(m => (
@@ -358,31 +258,31 @@ export default function Capturer() {
         {mode === 'Vocal' && (
           <div className="cap-panel">
             <textarea
+              ref={vocalRef}
               className="input textarea vocal-edit"
-              placeholder={recording ? 'Parlez maintenant…' : 'Appuyez sur le micro pour dicter, ou tapez directement…'}
+              placeholder="Tapez ici, ou appuyez sur Dicter puis sur 🎤 dans votre clavier…"
               value={transcript}
               onChange={e => setTranscript(e.target.value)}
+              inputMode="text"
+              enterKeyHint="done"
               style={{ minHeight: 130, resize: 'vertical' }}
-              readOnly={recording}
             />
-            <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+            <div style={{ display: 'flex', gap: 10, width: '100%' }}>
               <button
-                className={`mic-btn ${recording ? 'mic-active' : ''}`}
-                onClick={recording ? stopRecording : startRecording}
-                aria-label={recording ? 'Arrêter' : 'Dicter'}
+                className="dicter-btn"
+                onClick={() => vocalRef.current?.focus()}
+                aria-label="Dicter"
               >
-                {recording ? (
-                  <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
-                ) : (
-                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
-                    <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
-                    <line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/>
-                  </svg>
-                )}
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                  <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                  <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                  <line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/>
+                </svg>
+                Dicter
               </button>
-              {recording && <span style={{ fontSize: 13, color: 'var(--red)' }}>En écoute…</span>}
-              {!recording && transcript && <button className="btn btn-ghost btn-sm" onClick={clearTranscript}>Effacer</button>}
+              {transcript && (
+                <button className="btn btn-ghost btn-sm" onClick={() => setTranscript('')}>Effacer</button>
+              )}
             </div>
           </div>
         )}
@@ -443,31 +343,31 @@ export default function Capturer() {
               <p className="brain-dump-desc">Videz votre esprit à voix haute — factures, démarches, projets… L'IA découpe en dossiers distincts.</p>
             </div>
             <textarea
+              ref={brainRef}
               className="input textarea vocal-edit"
-              placeholder={recording ? 'Parlez librement, prenez votre temps…' : 'Appuyez sur le micro pour commencer, ou tapez directement…'}
+              placeholder="Appuyez sur Dicter puis sur 🎤 dans votre clavier, ou tapez directement…"
               value={transcript}
               onChange={e => setTranscript(e.target.value)}
+              inputMode="text"
+              enterKeyHint="done"
               style={{ minHeight: 130, resize: 'vertical' }}
-              readOnly={recording}
             />
-            <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+            <div style={{ display: 'flex', gap: 10, width: '100%' }}>
               <button
-                className={`mic-btn ${recording ? 'mic-active' : ''}`}
-                onClick={recording ? stopRecording : startRecording}
-                aria-label={recording ? 'Arrêter' : 'Commencer'}
+                className="dicter-btn"
+                onClick={() => brainRef.current?.focus()}
+                aria-label="Dicter"
               >
-                {recording ? (
-                  <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
-                ) : (
-                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
-                    <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
-                    <line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/>
-                  </svg>
-                )}
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                  <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                  <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                  <line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/>
+                </svg>
+                Dicter
               </button>
-              {recording && <span style={{ fontSize: 13, color: 'var(--red)' }}>En écoute…</span>}
-              {!recording && transcript && <button className="btn btn-ghost btn-sm" onClick={clearTranscript}>Effacer</button>}
+              {transcript && (
+                <button className="btn btn-ghost btn-sm" onClick={() => setTranscript('')}>Effacer</button>
+              )}
             </div>
           </div>
         )}
@@ -489,21 +389,23 @@ export default function Capturer() {
       </div>
 
       <style>{`
-        .browser-warn {
-          display: flex; gap: 10px; align-items: flex-start;
-          background: var(--amber-light, #fffbeb); border: 1px solid var(--amber, #d97706);
-          border-radius: var(--radius); padding: 12px 14px;
-          font-size: 13px; color: var(--text); line-height: 1.5;
-        }
         .mode-tabs { display: flex; background: var(--gray-light); border-radius: var(--radius-sm); padding: 3px; gap: 2px; margin-bottom: 16px; }
         .mode-tab { flex: 1; padding: 8px 4px; border: none; background: transparent; border-radius: 7px; font-size: 12px; font-weight: 500; color: var(--text-muted); transition: all 0.15s; white-space: nowrap; }
         .mode-tab-active { background: var(--surface); color: var(--green); box-shadow: var(--shadow); }
         .cap-panel { display: flex; flex-direction: column; align-items: center; gap: 12px; width: 100%; }
         .vocal-edit { font-size: 15px; line-height: 1.55; color: var(--text); }
-        .vocal-edit:read-only { background: var(--gray-light); cursor: default; }
-        .mic-btn { width: 72px; height: 72px; border-radius: 50%; border: none; background: var(--green); color: white; display: flex; align-items: center; justify-content: center; transition: all 0.15s; box-shadow: var(--shadow-md); flex-shrink: 0; }
-        .mic-active { background: var(--red); animation: pulse 1.2s ease-in-out infinite; }
-        @keyframes pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(220,38,38,0.3); } 50% { box-shadow: 0 0 0 12px rgba(220,38,38,0); } }
+        .dicter-btn {
+          flex: 1;
+          display: flex; align-items: center; justify-content: center; gap: 8px;
+          padding: 13px 20px;
+          border: none; border-radius: var(--radius-sm);
+          background: var(--green); color: #fff;
+          font-size: 15px; font-weight: 600;
+          cursor: pointer;
+          transition: background 0.15s, transform 0.1s;
+          box-shadow: var(--shadow-md);
+        }
+        .dicter-btn:active { transform: scale(0.97); background: var(--green-dark, #2f6040); }
         .brain-dump-info { width: 100%; padding: 14px 16px; background: var(--green-light); border-radius: var(--radius); border-left: 3px solid var(--green); }
         .brain-dump-title { font-size: 14px; font-weight: 600; color: var(--green); margin-bottom: 4px; }
         .brain-dump-desc { font-size: 13px; color: var(--text-secondary); line-height: 1.5; }
