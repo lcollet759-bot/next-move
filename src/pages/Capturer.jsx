@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 import { analyserCapture, analyserDocument, analyserBrainDump } from '../services/claude'
@@ -57,10 +57,12 @@ export default function Capturer() {
   const [mode, setMode] = useState('Texte')
 
   // Vocal
-  const [recording,    setRecording]    = useState(false)
-  const [transcript,   setTranscript]   = useState('')
+  const [recording,     setRecording]     = useState(false)
+  const [transcript,    setTranscript]    = useState('')
+  const [voiceBrowser,  setVoiceBrowser]  = useState(null)  // 'ok' | 'warn'
   const recognitionRef  = useRef(null)
-  const isRecordingRef  = useRef(false)  // source de vérité pour le mode manuel
+  const isRecordingRef  = useRef(false)
+  const prevTranscript  = useRef('')      // pour détection de répétitions Brave
 
   // Document
   const [docFile,    setDocFile]    = useState(null)
@@ -78,15 +80,33 @@ export default function Capturer() {
   const [brainDumpResult, setBrainDumpResult] = useState(null)
   const [saving,          setSaving]          = useState(false)
 
+  // ── Détection navigateur dès le montage ──────────────────────────────────
+  // Brave se déclare en tant que Chrome — on détecte via brave.isBrave()
+  // qui est une API asynchrone exposée par Brave.
+  useEffect(() => {
+    async function detectBrowser() {
+      const ua = navigator.userAgent
+      // Brave expose navigator.brave
+      const isBrave = navigator.brave
+        ? await navigator.brave.isBrave().catch(() => false)
+        : false
+      if (isBrave) { setVoiceBrowser('warn'); return }
+      // Firefox n'a pas webkitSpeechRecognition
+      const hasAPI = !!(window.SpeechRecognition || window.webkitSpeechRecognition)
+      if (!hasAPI) { setVoiceBrowser('warn'); return }
+      setVoiceBrowser('ok')
+    }
+    detectBrowser()
+  }, [])
+
   // ── Vocal : mode entièrement manuel ──────────────────────────────────────
-  // Le micro reste actif jusqu'au tap suivant. On relance automatiquement
-  // la reconnaissance en cas d'interruption (silence, timeout du navigateur).
   const startRecording = useCallback(() => {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition
     if (!SR) { setError('Dictée vocale non supportée sur ce navigateur.'); return }
 
     setTranscript('')
     setError('')
+    prevTranscript.current = ''
     isRecordingRef.current = true
 
     function createAndStart() {
@@ -96,16 +116,28 @@ export default function Capturer() {
       recognition.continuous     = true
 
       recognition.onresult = (e) => {
-        // Reconstruire depuis TOUTE la liste e.results à chaque événement.
-        // e.results est cumulatif — on n'accumule jamais dans un état externe,
-        // ce qui élimine tous les doublons quelle que soit la valeur de resultIndex.
         let finals  = ''
         let interim = ''
         for (let i = 0; i < e.results.length; i++) {
           if (e.results[i].isFinal) finals  += e.results[i][0].transcript
           else                      interim += e.results[i][0].transcript
         }
-        setTranscript(finals + interim)
+        const next = finals + interim
+
+        // Détection de répétition anormale (comportement Brave/non-Chrome) :
+        // si le nouveau texte est une répétition d'un segment déjà présent,
+        // on affiche l'avertissement navigateur.
+        if (voiceBrowser !== 'warn' && next.length > 20 && prevTranscript.current.length > 0) {
+          const prev = prevTranscript.current
+          // Vérifie si un bloc de 15+ chars du précédent transcript apparaît
+          // dupliqué dans le nouveau (signe de double-envoi du buffer)
+          const chunk = prev.slice(-20).trim()
+          if (chunk.length > 10 && next.includes(chunk + chunk.slice(0, 8))) {
+            setVoiceBrowser('warn')
+          }
+        }
+        prevTranscript.current = next
+        setTranscript(next)
       }
 
       recognition.onerror = (e) => {
@@ -144,6 +176,7 @@ export default function Capturer() {
   }, [])
 
   const clearTranscript = useCallback(() => {
+    prevTranscript.current = ''
     setTranscript('')
   }, [])
 
@@ -213,7 +246,7 @@ export default function Capturer() {
 
   const reset = () => {
     setProposition(null); setBrainDumpResult(null)
-    setTexte(''); setTranscript('')
+    setTexte(''); prevTranscript.current = ''; setTranscript('')
     setDocFile(null); setDocPreview(null); setDocBase64(null); setError('')
   }
 
@@ -324,6 +357,23 @@ export default function Capturer() {
         <h1 className="page-title">Capturer</h1>
         <p className="page-subtitle">Dictez, écrivez ou importez un document</p>
       </div>
+
+      {/* Avertissement navigateur vocal */}
+      {voiceBrowser === 'warn' && (mode === 'Vocal' || mode === 'Brain dump') && (
+        <div className="section">
+          <div className="browser-warn">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" style={{ flexShrink: 0, marginTop: 1 }}>
+              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+              <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+            </svg>
+            <span>
+              Pour une meilleure expérience vocale, utilisez{' '}
+              <strong>Google Chrome</strong>.
+              La dictée peut présenter des répétitions sur Brave et d'autres navigateurs.
+            </span>
+          </div>
+        </div>
+      )}
 
       <div className="section">
         <div className="mode-tabs">
@@ -472,6 +522,18 @@ export default function Capturer() {
       </div>
 
       <style>{`
+        .browser-warn {
+          display: flex;
+          gap: 10px;
+          align-items: flex-start;
+          background: var(--amber-light, #fffbeb);
+          border: 1px solid var(--amber, #d97706);
+          border-radius: var(--radius);
+          padding: 12px 14px;
+          font-size: 13px;
+          color: var(--text);
+          line-height: 1.5;
+        }
         .mode-tabs { display: flex; background: var(--gray-light); border-radius: var(--radius-sm); padding: 3px; gap: 2px; margin-bottom: 16px; }
         .mode-tab { flex: 1; padding: 8px 4px; border: none; background: transparent; border-radius: 7px; font-size: 12px; font-weight: 500; color: var(--text-muted); transition: all 0.15s; white-space: nowrap; }
         .mode-tab-active { background: var(--surface); color: var(--green); box-shadow: var(--shadow); }
