@@ -58,7 +58,7 @@ export default function Capturer() {
   const [voiceBrowser,  setVoiceBrowser]  = useState(null)  // 'ok' | 'warn'
   const recognitionRef  = useRef(null)
   const isRecordingRef  = useRef(false)
-  const prevTranscript  = useRef('')
+  const accumulatedRef  = useRef('')  // finals de toutes les sessions passées
 
   // Document
   const [docFile,    setDocFile]    = useState(null)
@@ -97,7 +97,7 @@ export default function Capturer() {
 
     setTranscript('')
     setError('')
-    prevTranscript.current = ''
+    accumulatedRef.current = ''
     isRecordingRef.current = true
 
     function createAndStart() {
@@ -106,41 +106,35 @@ export default function Capturer() {
       recognition.interimResults = true
       recognition.continuous     = true
 
-      recognition.onresult = (e) => {
-        let finals  = ''
-        let interim = ''
-        for (let i = 0; i < e.results.length; i++) {
-          if (e.results[i].isFinal) finals  += e.results[i][0].transcript
-          else                      interim += e.results[i][0].transcript
-        }
-        const next = finals + interim
+      // Finals de la session courante uniquement (variable locale à ce closure)
+      let sessionFinals = ''
 
-        // Détection répétitions (Brave / non-Chrome)
-        if (voiceBrowser !== 'warn' && next.length > 20 && prevTranscript.current.length > 0) {
-          const prev  = prevTranscript.current
-          const chunk = prev.slice(-20).trim()
-          if (chunk.length > 10 && next.includes(chunk + chunk.slice(0, 8))) {
-            setVoiceBrowser('warn')
-          }
+      recognition.onresult = (e) => {
+        sessionFinals = ''
+        let interim   = ''
+        for (let i = 0; i < e.results.length; i++) {
+          if (e.results[i].isFinal) sessionFinals += e.results[i][0].transcript
+          else                      interim       += e.results[i][0].transcript
         }
-        prevTranscript.current = next
-        setTranscript(next)
+        setTranscript(accumulatedRef.current + sessionFinals + interim)
       }
 
+      // onerror : uniquement les erreurs fatales (permissions).
+      // aborted / no-speech / network → on ne fait rien : onend se chargera du restart.
       recognition.onerror = (e) => {
         if (!isRecordingRef.current) return
-        if (e.error !== 'not-allowed' && e.error !== 'service-not-allowed') {
-          setTimeout(createAndStart, 200)
-        } else {
+        if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
           setError(`Microphone non autorisé : ${e.error}`)
           isRecordingRef.current = false
           setRecording(false)
         }
       }
 
+      // onend : seul point de restart — garanti de se déclencher après tout onerror.
       recognition.onend = () => {
         if (isRecordingRef.current) {
-          setTimeout(createAndStart, 100)
+          accumulatedRef.current += sessionFinals  // préserver les finals avant restart
+          setTimeout(createAndStart, 150)
         } else {
           setRecording(false)
         }
@@ -160,7 +154,7 @@ export default function Capturer() {
   }, [])
 
   const clearTranscript = useCallback(() => {
-    prevTranscript.current = ''
+    accumulatedRef.current = ''
     setTranscript('')
   }, [])
 
@@ -223,7 +217,7 @@ export default function Capturer() {
 
   const reset = () => {
     setProposition(null); setBrainDumpResult(null)
-    setTexte(''); prevTranscript.current = ''; setTranscript('')
+    setTexte(''); accumulatedRef.current = ''; setTranscript('')
     setDocFile(null); setDocPreview(null); setDocBase64(null); setError('')
   }
 
