@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { useApp } from '../context/AppContext'
 import { genererMessageMatinal } from '../services/claude'
 import DossierCard from '../components/DossierCard'
@@ -6,13 +6,11 @@ import DossierCard from '../components/DossierCard'
 // Transforme **gras** et sauts de ligne en JSX
 function renderMarkdown(text) {
   if (!text) return null
-  // Insère un saut de ligne avant chaque nom de dossier entre guillemets (« » ou " ")
   const normalized = text
-    .replace(/([^\n])(«|\u201c)/g, '$1\n$2')   // saut avant «  ou "
-    .replace(/\. (?=[A-Z«\u201c])/g, '.\n')     // saut après un point suivi d'une majuscule ou guillemet
+    .replace(/([^\n])(«|\u201c)/g, '$1\n$2')
+    .replace(/\. (?=[A-Z«\u201c])/g, '.\n')
 
   return normalized.split('\n').map((line, i, arr) => {
-    // Parse **gras** dans chaque ligne
     const parts = line.split(/(\*\*[^*]+\*\*)/g).map((part, j) => {
       if (part.startsWith('**') && part.endsWith('**')) {
         return <strong key={j}>{part.slice(2, -2)}</strong>
@@ -51,55 +49,36 @@ function SkeletonCard() {
 
 const MSG_KEY  = 'nm-morning-msg'
 const DATE_KEY = 'nm-morning-date'
+const HASH_KEY = 'nm-morning-hash'
+
+function dossiersHash(dossiers) {
+  return dossiers.map(d => d.id + '|' + d.updatedAt + '|' + d.etat).join(';')
+}
 
 export default function Aujourdhui() {
   const { dossiersAujourdhui, loading, apiKey } = useApp()
   const [message,    setMessage]    = useState(null)
   const [loadingMsg, setLoadingMsg] = useState(false)
-  const generatingRef = useRef(false)
 
-  // ── Logs de diagnostic (à retirer après résolution) ───────────────────────
-  useEffect(() => {
-    console.log('[Morning state] message →', message ? `"${message.slice(0, 60)}..."` : message)
-  }, [message])
-  useEffect(() => {
-    console.log('[Morning state] loadingMsg →', loadingMsg)
-  }, [loadingMsg])
-
-  async function generer(dossiers) {
-    if (generatingRef.current) {
-      console.log('[Morning] déjà en cours, appel ignoré')
-      return
-    }
-    generatingRef.current = true
+  function generer(dossiers) {
     const today = new Date().toDateString()
-    console.log('[Morning] 1. début — dossiers:', dossiers.length, '| apiKey localStorage:', !!localStorage.getItem('anthropic_api_key'))
     setLoadingMsg(true)
-    try {
-      const msg = await genererMessageMatinal(dossiers)
-      console.log('[Morning] 2. réponse API — type:', typeof msg, '| length:', msg?.length, '| preview:', msg?.slice(0, 60))
-      if (msg) {
-        setMessage(msg)
-        console.log('[Morning] 3. setMessage() appelé')
-        localStorage.setItem(MSG_KEY,  msg)
-        localStorage.setItem(DATE_KEY, today)
-        console.log('[Morning] 4. localStorage sauvegardé (sans hash)')
-      } else {
-        console.warn('[Morning] 2b. msg est falsy :', msg)
-      }
-    } catch (err) {
-      console.error('[Morning] ERREUR :', err?.message, err)
-    } finally {
-      setLoadingMsg(false)
-      generatingRef.current = false
-      console.log('[Morning] 5. finally — loadingMsg → false')
-    }
+    genererMessageMatinal(dossiers)
+      .then(msg => {
+        if (msg) {
+          setMessage(msg)
+          localStorage.setItem(MSG_KEY,  msg)
+          localStorage.setItem(DATE_KEY, today)
+          localStorage.setItem(HASH_KEY, dossiersHash(dossiers))
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoadingMsg(false))
   }
 
   const rafraichirMessage = () => {
     if (!apiKey || dossiersAujourdhui.length === 0 || loadingMsg) return
     localStorage.removeItem(MSG_KEY)
-    localStorage.removeItem(DATE_KEY)
     setMessage(null)
     generer(dossiersAujourdhui)
   }
@@ -108,20 +87,15 @@ export default function Aujourdhui() {
     if (!apiKey || dossiersAujourdhui.length === 0) return
     const cached     = localStorage.getItem(MSG_KEY)
     const cachedDate = localStorage.getItem(DATE_KEY)
+    const cachedHash = localStorage.getItem(HASH_KEY)
     const today      = new Date().toDateString()
+    const hash       = dossiersHash(dossiersAujourdhui)
 
-    console.log('[Morning] cache check — cached:', !!cached, '| cachedDate:', cachedDate, '| today:', today)
-
-    // Cache par date uniquement — le hash Supabase change à chaque lecture
-    // (format timestamp différent entre mémoire et base), ce qui invaliderait
-    // le cache à chaque visite. Un résumé par jour suffit.
-    if (cached && cachedDate === today) {
-      console.log('[Morning] cache HIT → setMessage depuis localStorage')
+    if (cached && cachedDate === today && cachedHash === hash) {
       setMessage(cached)
       return
     }
 
-    console.log('[Morning] cache MISS → génération')
     generer(dossiersAujourdhui)
   }, [apiKey, dossiersAujourdhui.length])
 
@@ -163,19 +137,16 @@ export default function Aujourdhui() {
           <div className="morning-card">
             <div className="morning-dot" />
             <div style={{ flex: 1 }}>
-              {/* Texte affiché dès réception, indépendamment de loadingMsg */}
-              {message && (
-                <p className="morning-text">{renderMarkdown(message)}</p>
-              )}
-              {/* Spinner uniquement si chargement ET pas encore de texte */}
-              {loadingMsg && !message && (
+              {loadingMsg ? (
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                   <div className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} />
                   <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>Préparation du résumé…</span>
                 </div>
+              ) : (
+                <p className="morning-text">{renderMarkdown(message)}</p>
               )}
             </div>
-            {!loadingMsg && apiKey && message && (
+            {!loadingMsg && apiKey && (
               <button
                 className="refresh-btn"
                 onClick={rafraichirMessage}

@@ -2,7 +2,6 @@ import { useState, useRef, useCallback, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 import { analyserCapture, analyserDocument, analyserBrainDump } from '../services/claude'
-import { transcribeAudio } from '../services/whisper'
 import EtatBadge from '../components/EtatBadge'
 import QuadrantBadge from '../components/QuadrantBadge'
 import { haptic } from '../utils/haptic'
@@ -48,29 +47,18 @@ async function readFileAsBase64(file) {
   })
 }
 
-function wordCount(text) {
-  return text.trim().split(/\s+/).filter(Boolean).length
-}
-
-function formatTime(s) {
-  const m = Math.floor(s / 60)
-  return `${m}:${String(s % 60).padStart(2, '0')}`
-}
-
 export default function Capturer() {
-  const { creerDossier, apiKey, openaiKey } = useApp()
+  const { creerDossier, apiKey } = useApp()
   const navigate = useNavigate()
   const [mode, setMode] = useState('Texte')
 
-  // Vocal — MediaRecorder
-  const [recording,    setRecording]    = useState(false)
-  const [transcribing, setTranscribing] = useState(false)
-  const [transcript,   setTranscript]   = useState('')
-  const [recTime,      setRecTime]      = useState(0)
-  const mediaRecorderRef = useRef(null)
-  const audioChunksRef   = useRef([])
-  const streamRef        = useRef(null)
-  const timerRef         = useRef(null)
+  // Vocal
+  const [recording,     setRecording]     = useState(false)
+  const [transcript,    setTranscript]    = useState('')
+  const [voiceBrowser,  setVoiceBrowser]  = useState(null)  // 'ok' | 'warn'
+  const recognitionRef  = useRef(null)
+  const isRecordingRef  = useRef(false)
+  const prevTranscript  = useRef('')
 
   // Document
   const [docFile,    setDocFile]    = useState(null)
@@ -88,70 +76,91 @@ export default function Capturer() {
   const [brainDumpResult, setBrainDumpResult] = useState(null)
   const [saving,          setSaving]          = useState(false)
 
-  // ── Vocal : MediaRecorder + Whisper ──────────────────────────────────────
-  const startRecording = useCallback(async () => {
-    setError('')
+  // ── Détection navigateur ──────────────────────────────────────────────────
+  useEffect(() => {
+    async function detectBrowser() {
+      const isBrave = navigator.brave
+        ? await navigator.brave.isBrave().catch(() => false)
+        : false
+      if (isBrave) { setVoiceBrowser('warn'); return }
+      const hasAPI = !!(window.SpeechRecognition || window.webkitSpeechRecognition)
+      if (!hasAPI) { setVoiceBrowser('warn'); return }
+      setVoiceBrowser('ok')
+    }
+    detectBrowser()
+  }, [])
+
+  // ── Vocal : Web Speech API, mode manuel ───────────────────────────────────
+  const startRecording = useCallback(() => {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition
+    if (!SR) { setError('Dictée vocale non supportée sur ce navigateur.'); return }
+
     setTranscript('')
-    audioChunksRef.current = []
+    setError('')
+    prevTranscript.current = ''
+    isRecordingRef.current = true
 
-    // Demande de permission micro
-    let stream
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      streamRef.current = stream
-    } catch (err) {
-      const msg = ['NotAllowedError', 'PermissionDeniedError'].includes(err.name)
-        ? 'Permission microphone refusée. Autorisez le micro dans les paramètres Chrome (🔒 dans la barre d\'adresse).'
-        : `Microphone inaccessible : ${err.message}`
-      setError(msg)
-      return
-    }
+    function createAndStart() {
+      const recognition = new SR()
+      recognition.lang           = 'fr-FR'
+      recognition.interimResults = true
+      recognition.continuous     = true
 
-    // Format audio le plus compatible (Chrome Android préfère webm/opus)
-    const mimeType = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus', 'audio/mp4']
-      .find(t => MediaRecorder.isTypeSupported(t)) || ''
+      recognition.onresult = (e) => {
+        let finals  = ''
+        let interim = ''
+        for (let i = 0; i < e.results.length; i++) {
+          if (e.results[i].isFinal) finals  += e.results[i][0].transcript
+          else                      interim += e.results[i][0].transcript
+        }
+        const next = finals + interim
 
-    const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : {})
-    mediaRecorderRef.current = recorder
-
-    recorder.ondataavailable = (e) => {
-      if (e.data.size > 0) audioChunksRef.current.push(e.data)
-    }
-
-    recorder.onstop = async () => {
-      // Libérer le micro immédiatement
-      stream.getTracks().forEach(t => t.stop())
-      clearInterval(timerRef.current)
-      setRecTime(0)
-
-      if (audioChunksRef.current.length === 0) return
-
-      const blob = new Blob(audioChunksRef.current, { type: mimeType || 'audio/webm' })
-      setTranscribing(true)
-      try {
-        const text = await transcribeAudio(blob)
-        setTranscript(text)
-      } catch (err) {
-        setError(err.message)
-      } finally {
-        setTranscribing(false)
+        // Détection répétitions (Brave / non-Chrome)
+        if (voiceBrowser !== 'warn' && next.length > 20 && prevTranscript.current.length > 0) {
+          const prev  = prevTranscript.current
+          const chunk = prev.slice(-20).trim()
+          if (chunk.length > 10 && next.includes(chunk + chunk.slice(0, 8))) {
+            setVoiceBrowser('warn')
+          }
+        }
+        prevTranscript.current = next
+        setTranscript(next)
       }
+
+      recognition.onerror = (e) => {
+        if (!isRecordingRef.current) return
+        if (e.error !== 'not-allowed' && e.error !== 'service-not-allowed') {
+          setTimeout(createAndStart, 200)
+        } else {
+          setError(`Microphone non autorisé : ${e.error}`)
+          isRecordingRef.current = false
+          setRecording(false)
+        }
+      }
+
+      recognition.onend = () => {
+        if (isRecordingRef.current) {
+          setTimeout(createAndStart, 100)
+        } else {
+          setRecording(false)
+        }
+      }
+
+      recognitionRef.current = recognition
+      try { recognition.start() } catch {}
     }
 
-    // Collecter des chunks toutes les secondes pour Android
-    recorder.start(1000)
+    createAndStart()
     setRecording(true)
-    setRecTime(0)
-    timerRef.current = setInterval(() => setRecTime(t => t + 1), 1000)
   }, [])
 
   const stopRecording = useCallback(() => {
-    mediaRecorderRef.current?.stop()
-    setRecording(false)
-    clearInterval(timerRef.current)
+    isRecordingRef.current = false
+    recognitionRef.current?.stop()
   }, [])
 
   const clearTranscript = useCallback(() => {
+    prevTranscript.current = ''
     setTranscript('')
   }, [])
 
@@ -192,7 +201,6 @@ export default function Capturer() {
     finally { setLoading(false) }
   }, [mode, texte, transcript, docBase64, docMime, apiKey])
 
-  // ── Confirmer (mode simple) ───────────────────────────────────────────────
   const confirmer = useCallback(async () => {
     if (!proposition) return
     setSaving(true)
@@ -203,7 +211,6 @@ export default function Capturer() {
     finally { setSaving(false) }
   }, [proposition, creerDossier, mode, navigate])
 
-  // ── Tout créer (Brain dump) ───────────────────────────────────────────────
   const toutCreer = useCallback(async () => {
     if (!brainDumpResult?.length) return
     setSaving(true); setError('')
@@ -314,8 +321,7 @@ export default function Capturer() {
   }
 
   // ── Vue principale ────────────────────────────────────────────────────────
-  const isVocalMode = mode === 'Vocal' || mode === 'Brain dump'
-  const canAnalyse  = !loading && !recording && !transcribing &&
+  const canAnalyse = !loading &&
     (mode === 'Vocal'      ? transcript.trim() : true) &&
     (mode === 'Brain dump' ? transcript.trim() : true) &&
     (mode === 'Texte'      ? texte.trim()      : true) &&
@@ -328,8 +334,7 @@ export default function Capturer() {
         <p className="page-subtitle">Dictez, écrivez ou importez un document</p>
       </div>
 
-      {/* Avertissement clé OpenAI manquante */}
-      {isVocalMode && !openaiKey && (
+      {voiceBrowser === 'warn' && (mode === 'Vocal' || mode === 'Brain dump') && (
         <div className="section">
           <div className="browser-warn">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" style={{ flexShrink: 0, marginTop: 1 }}>
@@ -337,8 +342,8 @@ export default function Capturer() {
               <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
             </svg>
             <span>
-              Clé OpenAI requise pour la dictée. Configurez-la dans{' '}
-              <strong>Réglages → Transcription vocale</strong>.
+              Pour une meilleure expérience vocale, utilisez <strong>Google Chrome</strong>.
+              La dictée peut présenter des répétitions sur Brave et d'autres navigateurs.
             </span>
           </div>
         </div>
@@ -360,21 +365,16 @@ export default function Capturer() {
           <div className="cap-panel">
             <textarea
               className="input textarea vocal-edit"
-              placeholder={
-                transcribing ? 'Transcription en cours…'
-                : recording  ? 'En écoute…'
-                : 'Appuyez sur le micro pour dicter, ou tapez directement…'
-              }
+              placeholder={recording ? 'Parlez maintenant…' : 'Appuyez sur le micro pour dicter, ou tapez directement…'}
               value={transcript}
               onChange={e => setTranscript(e.target.value)}
               style={{ minHeight: 130, resize: 'vertical' }}
-              readOnly={recording || transcribing}
+              readOnly={recording}
             />
             <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
               <button
                 className={`mic-btn ${recording ? 'mic-active' : ''}`}
                 onClick={recording ? stopRecording : startRecording}
-                disabled={transcribing || !openaiKey}
                 aria-label={recording ? 'Arrêter' : 'Dicter'}
               >
                 {recording ? (
@@ -387,20 +387,8 @@ export default function Capturer() {
                   </svg>
                 )}
               </button>
-              {recording && (
-                <span style={{ fontSize: 13, color: 'var(--red)', fontVariantNumeric: 'tabular-nums' }}>
-                  ● {formatTime(recTime)}
-                </span>
-              )}
-              {transcribing && (
-                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                  <div className="spinner" style={{ width: 16, height: 16, borderWidth: 2 }} />
-                  <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>Transcription…</span>
-                </div>
-              )}
-              {!recording && !transcribing && transcript && (
-                <button className="btn btn-ghost btn-sm" onClick={clearTranscript}>Effacer</button>
-              )}
+              {recording && <span style={{ fontSize: 13, color: 'var(--red)' }}>En écoute…</span>}
+              {!recording && transcript && <button className="btn btn-ghost btn-sm" onClick={clearTranscript}>Effacer</button>}
             </div>
           </div>
         )}
@@ -462,21 +450,16 @@ export default function Capturer() {
             </div>
             <textarea
               className="input textarea vocal-edit"
-              placeholder={
-                transcribing ? 'Transcription en cours…'
-                : recording  ? 'Parlez librement, prenez votre temps…'
-                : 'Appuyez sur le micro pour commencer, ou tapez directement…'
-              }
+              placeholder={recording ? 'Parlez librement, prenez votre temps…' : 'Appuyez sur le micro pour commencer, ou tapez directement…'}
               value={transcript}
               onChange={e => setTranscript(e.target.value)}
               style={{ minHeight: 130, resize: 'vertical' }}
-              readOnly={recording || transcribing}
+              readOnly={recording}
             />
             <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
               <button
                 className={`mic-btn ${recording ? 'mic-active' : ''}`}
                 onClick={recording ? stopRecording : startRecording}
-                disabled={transcribing || !openaiKey}
                 aria-label={recording ? 'Arrêter' : 'Commencer'}
               >
                 {recording ? (
@@ -489,20 +472,8 @@ export default function Capturer() {
                   </svg>
                 )}
               </button>
-              {recording && (
-                <span style={{ fontSize: 13, color: 'var(--red)', fontVariantNumeric: 'tabular-nums' }}>
-                  ● {formatTime(recTime)}
-                </span>
-              )}
-              {transcribing && (
-                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                  <div className="spinner" style={{ width: 16, height: 16, borderWidth: 2 }} />
-                  <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>Transcription…</span>
-                </div>
-              )}
-              {!recording && !transcribing && transcript && (
-                <button className="btn btn-ghost btn-sm" onClick={clearTranscript}>Effacer</button>
-              )}
+              {recording && <span style={{ fontSize: 13, color: 'var(--red)' }}>En écoute…</span>}
+              {!recording && transcript && <button className="btn btn-ghost btn-sm" onClick={clearTranscript}>Effacer</button>}
             </div>
           </div>
         )}
@@ -525,16 +496,10 @@ export default function Capturer() {
 
       <style>{`
         .browser-warn {
-          display: flex;
-          gap: 10px;
-          align-items: flex-start;
-          background: var(--amber-light, #fffbeb);
-          border: 1px solid var(--amber, #d97706);
-          border-radius: var(--radius);
-          padding: 12px 14px;
-          font-size: 13px;
-          color: var(--text);
-          line-height: 1.5;
+          display: flex; gap: 10px; align-items: flex-start;
+          background: var(--amber-light, #fffbeb); border: 1px solid var(--amber, #d97706);
+          border-radius: var(--radius); padding: 12px 14px;
+          font-size: 13px; color: var(--text); line-height: 1.5;
         }
         .mode-tabs { display: flex; background: var(--gray-light); border-radius: var(--radius-sm); padding: 3px; gap: 2px; margin-bottom: 16px; }
         .mode-tab { flex: 1; padding: 8px 4px; border: none; background: transparent; border-radius: 7px; font-size: 12px; font-weight: 500; color: var(--text-muted); transition: all 0.15s; white-space: nowrap; }
