@@ -60,8 +60,7 @@ export default function Capturer() {
   const [recording,    setRecording]    = useState(false)
   const [transcript,   setTranscript]   = useState('')
   const recognitionRef  = useRef(null)
-  const isRecordingRef  = useRef(false)   // source de vérité pour le mode manuel
-  const finalTextRef    = useRef('')      // accumule les segments définitivement validés
+  const isRecordingRef  = useRef(false)  // source de vérité pour le mode manuel
 
   // Document
   const [docFile,    setDocFile]    = useState(null)
@@ -86,7 +85,6 @@ export default function Capturer() {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition
     if (!SR) { setError('Dictée vocale non supportée sur ce navigateur.'); return }
 
-    finalTextRef.current = ''
     setTranscript('')
     setError('')
     isRecordingRef.current = true
@@ -95,16 +93,19 @@ export default function Capturer() {
       const recognition = new SR()
       recognition.lang           = 'fr-FR'
       recognition.interimResults = true
-      recognition.continuous     = true   // empêche l'arrêt auto sur silence court
+      recognition.continuous     = true
 
       recognition.onresult = (e) => {
+        // Reconstruire depuis TOUTE la liste e.results à chaque événement.
+        // e.results est cumulatif — on n'accumule jamais dans un état externe,
+        // ce qui élimine tous les doublons quelle que soit la valeur de resultIndex.
+        let finals  = ''
         let interim = ''
-        for (let i = e.resultIndex; i < e.results.length; i++) {
-          const t = e.results[i][0].transcript
-          if (e.results[i].isFinal) finalTextRef.current += t
-          else interim += t
+        for (let i = 0; i < e.results.length; i++) {
+          if (e.results[i].isFinal) finals  += e.results[i][0].transcript
+          else                      interim += e.results[i][0].transcript
         }
-        setTranscript(finalTextRef.current + interim)
+        setTranscript(finals + interim)
       }
 
       recognition.onerror = (e) => {
@@ -143,7 +144,6 @@ export default function Capturer() {
   }, [])
 
   const clearTranscript = useCallback(() => {
-    finalTextRef.current = ''
     setTranscript('')
   }, [])
 
@@ -213,7 +213,7 @@ export default function Capturer() {
 
   const reset = () => {
     setProposition(null); setBrainDumpResult(null)
-    setTexte(''); finalTextRef.current = ''; setTranscript('')
+    setTexte(''); setTranscript('')
     setDocFile(null); setDocPreview(null); setDocBase64(null); setError('')
   }
 
@@ -344,7 +344,7 @@ export default function Capturer() {
               className="input textarea vocal-edit"
               placeholder={recording ? 'Parlez maintenant…' : 'Appuyez sur le micro pour dicter, ou tapez directement…'}
               value={transcript}
-              onChange={e => { finalTextRef.current = e.target.value; setTranscript(e.target.value) }}
+              onChange={e => setTranscript(e.target.value)}
               style={{ minHeight: 130, resize: 'vertical' }}
               readOnly={recording}
             />
@@ -429,7 +429,7 @@ export default function Capturer() {
               className="input textarea vocal-edit"
               placeholder={recording ? 'Parlez librement, prenez votre temps…' : 'Appuyez sur le micro pour commencer, ou tapez directement…'}
               value={transcript}
-              onChange={e => { finalTextRef.current = e.target.value; setTranscript(e.target.value) }}
+              onChange={e => setTranscript(e.target.value)}
               style={{ minHeight: 130, resize: 'vertical' }}
               readOnly={recording}
             />
