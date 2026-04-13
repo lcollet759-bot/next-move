@@ -51,11 +51,6 @@ function SkeletonCard() {
 
 const MSG_KEY  = 'nm-morning-msg'
 const DATE_KEY = 'nm-morning-date'
-const HASH_KEY = 'nm-morning-hash'
-
-function dossiersHash(dossiers) {
-  return dossiers.map(d => d.id + '|' + d.updatedAt + '|' + d.etat).join(';')
-}
 
 export default function Aujourdhui() {
   const { dossiersAujourdhui, loading, apiKey } = useApp()
@@ -63,40 +58,48 @@ export default function Aujourdhui() {
   const [loadingMsg, setLoadingMsg] = useState(false)
   const generatingRef = useRef(false)
 
+  // ── Logs de diagnostic (à retirer après résolution) ───────────────────────
+  useEffect(() => {
+    console.log('[Morning state] message →', message ? `"${message.slice(0, 60)}..."` : message)
+  }, [message])
+  useEffect(() => {
+    console.log('[Morning state] loadingMsg →', loadingMsg)
+  }, [loadingMsg])
+
   async function generer(dossiers) {
     if (generatingRef.current) {
-      console.log('[Morning] already generating, skipped')
+      console.log('[Morning] déjà en cours, appel ignoré')
       return
     }
     generatingRef.current = true
     const today = new Date().toDateString()
-    console.log('[Morning] 1. start — dossiers:', dossiers.length, 'apiKey set:', !!localStorage.getItem('anthropic_api_key'))
+    console.log('[Morning] 1. début — dossiers:', dossiers.length, '| apiKey localStorage:', !!localStorage.getItem('anthropic_api_key'))
     setLoadingMsg(true)
     try {
       const msg = await genererMessageMatinal(dossiers)
-      console.log('[Morning] 2. API response — msg type:', typeof msg, 'length:', msg?.length, 'preview:', msg?.slice(0, 60))
+      console.log('[Morning] 2. réponse API — type:', typeof msg, '| length:', msg?.length, '| preview:', msg?.slice(0, 60))
       if (msg) {
         setMessage(msg)
-        console.log('[Morning] 3. setMessage called — msg length:', msg.length)
+        console.log('[Morning] 3. setMessage() appelé')
         localStorage.setItem(MSG_KEY,  msg)
         localStorage.setItem(DATE_KEY, today)
-        localStorage.setItem(HASH_KEY, dossiersHash(dossiers))
-        console.log('[Morning] 4. localStorage saved')
+        console.log('[Morning] 4. localStorage sauvegardé (sans hash)')
       } else {
-        console.warn('[Morning] 2b. msg is falsy — not setting state:', msg)
+        console.warn('[Morning] 2b. msg est falsy :', msg)
       }
     } catch (err) {
-      console.error('[Morning] ERROR:', err?.message, err)
+      console.error('[Morning] ERREUR :', err?.message, err)
     } finally {
       setLoadingMsg(false)
       generatingRef.current = false
-      console.log('[Morning] 5. finally — loadingMsg set to false')
+      console.log('[Morning] 5. finally — loadingMsg → false')
     }
   }
 
   const rafraichirMessage = () => {
     if (!apiKey || dossiersAujourdhui.length === 0 || loadingMsg) return
     localStorage.removeItem(MSG_KEY)
+    localStorage.removeItem(DATE_KEY)
     setMessage(null)
     generer(dossiersAujourdhui)
   }
@@ -105,20 +108,22 @@ export default function Aujourdhui() {
     if (!apiKey || dossiersAujourdhui.length === 0) return
     const cached     = localStorage.getItem(MSG_KEY)
     const cachedDate = localStorage.getItem(DATE_KEY)
-    const cachedHash = localStorage.getItem(HASH_KEY)
     const today      = new Date().toDateString()
-    const hash       = dossiersHash(dossiersAujourdhui)
 
-    // Utiliser le cache si : même jour ET dossiers inchangés
-    if (cached && cachedDate === today && cachedHash === hash) {
+    console.log('[Morning] cache check — cached:', !!cached, '| cachedDate:', cachedDate, '| today:', today)
+
+    // Cache par date uniquement — le hash Supabase change à chaque lecture
+    // (format timestamp différent entre mémoire et base), ce qui invaliderait
+    // le cache à chaque visite. Un résumé par jour suffit.
+    if (cached && cachedDate === today) {
+      console.log('[Morning] cache HIT → setMessage depuis localStorage')
       setMessage(cached)
       return
     }
 
+    console.log('[Morning] cache MISS → génération')
     generer(dossiersAujourdhui)
   }, [apiKey, dossiersAujourdhui.length])
-
-  console.log('[Morning render] message:', message ? `"${message.slice(0,40)}..."` : message, '| loadingMsg:', loadingMsg)
 
   if (loading) {
     return (

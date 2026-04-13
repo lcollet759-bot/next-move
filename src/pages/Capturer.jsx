@@ -102,6 +102,7 @@ export default function Capturer() {
   // ── Vocal : mode entièrement manuel ──────────────────────────────────────
   const startRecording = useCallback(() => {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition
+    console.log('[Vocal] startRecording — SR disponible:', !!SR, '| isRecordingRef:', isRecordingRef.current)
     if (!SR) { setError('Dictée vocale non supportée sur ce navigateur.'); return }
 
     setTranscript('')
@@ -114,8 +115,10 @@ export default function Capturer() {
       recognition.lang           = 'fr-FR'
       recognition.interimResults = true
       recognition.continuous     = true
+      console.log('[Vocal] createAndStart — recognition créé, lang:', recognition.lang, 'continuous:', recognition.continuous)
 
       recognition.onresult = (e) => {
+        console.log('[Vocal] onresult — results.length:', e.results.length, '| resultIndex:', e.resultIndex)
         let finals  = ''
         let interim = ''
         for (let i = 0; i < e.results.length; i++) {
@@ -123,6 +126,7 @@ export default function Capturer() {
           else                      interim += e.results[i][0].transcript
         }
         const next = finals + interim
+        console.log('[Vocal] transcript → finals:', JSON.stringify(finals.slice(0, 60)), '| interim:', JSON.stringify(interim.slice(0, 40)))
 
         // Détection de répétition anormale (comportement Brave/non-Chrome) :
         // si le nouveau texte est une répétition d'un segment déjà présent,
@@ -141,6 +145,7 @@ export default function Capturer() {
       }
 
       recognition.onerror = (e) => {
+        console.error('[Vocal] onerror:', e.error, '| isRecordingRef:', isRecordingRef.current)
         // 'no-speech' et 'audio-capture' sont transitoires — on relance
         if (!isRecordingRef.current) return
         if (e.error !== 'not-allowed' && e.error !== 'service-not-allowed') {
@@ -154,6 +159,7 @@ export default function Capturer() {
 
       // onend : relancer si l'utilisateur n'a pas tapé Stop
       recognition.onend = () => {
+        console.log('[Vocal] onend — isRecordingRef:', isRecordingRef.current)
         if (isRecordingRef.current) {
           setTimeout(createAndStart, 100)
         } else {
@@ -162,7 +168,12 @@ export default function Capturer() {
       }
 
       recognitionRef.current = recognition
-      try { recognition.start() } catch {}
+      try {
+        recognition.start()
+        console.log('[Vocal] recognition.start() OK')
+      } catch (err) {
+        console.error('[Vocal] recognition.start() a levé une exception:', err)
+      }
     }
 
     createAndStart()
