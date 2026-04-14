@@ -21,6 +21,55 @@ const ETATS_LABELS = {
   clos:            'Clôturé',
 }
 
+// ── Analyse déterministe de la cause de blocage ───────────────────────────────
+function analyserCauseBlocage(dossier) {
+  const today = new Date(); today.setHours(0, 0, 0, 0)
+
+  // Cas 1 — Échéance dépassée
+  if (dossier.echeance) {
+    const due  = new Date(dossier.echeance + 'T00:00:00')
+    if (due < today) {
+      const dateStr = due.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })
+      return {
+        phrase:     `Échéance du ${dateStr} dépassée — reporter ou clore ?`,
+        action:     'Reporter l\'échéance',
+        actionType: 'echeance',
+      }
+    }
+  }
+
+  // Cas 2 — Attente externe sans réponse depuis ≥ 15 jours
+  if (dossier.organisme) {
+    const daysSince = Math.floor((today - new Date(dossier.updatedAt)) / 86_400_000)
+    if (daysSince >= 15) {
+      return {
+        phrase:     `Aucun retour de ${dossier.organisme} depuis ${daysSince} jour${daysSince > 1 ? 's' : ''} — relancer ?`,
+        action:     'Marquer comme relancé',
+        actionType: 'relancer',
+      }
+    }
+  }
+
+  // Cas 3 — Aucun progrès depuis longtemps
+  const daysSinceUpdate = Math.floor((today - new Date(dossier.updatedAt)) / 86_400_000)
+  const toutesBloquees  = dossier.taches.length > 0 && dossier.taches.every(t => t.done)
+  if (toutesBloquees || daysSinceUpdate >= 14) {
+    const days = daysSinceUpdate
+    return {
+      phrase:     `Ce dossier n'avance plus depuis ${days} jour${days > 1 ? 's' : ''} — identifier l'obstacle ?`,
+      action:     'Débloquer',
+      actionType: 'debloquer',
+    }
+  }
+
+  // Cas 4 — Blocage manuel (défaut)
+  return {
+    phrase:     'Vous avez signalé un blocage — quelle est la prochaine action possible ?',
+    action:     'Passer en actionnable',
+    actionType: 'manuel',
+  }
+}
+
 function formatDate(iso) {
   if (!iso) return null
   return new Date(iso + 'T00:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })
@@ -122,10 +171,18 @@ export default function DossierDetail() {
     )
   }
 
-  const isClos     = dossier.etat === 'clos'
-  const tachesDone = dossier.taches.filter(t => t.done).length
+  const isClos      = dossier.etat === 'clos'
+  const tachesDone  = dossier.taches.filter(t => t.done).length
+  const blocageCause = dossier.etat === 'bloque' && !isClos ? analyserCauseBlocage(dossier) : null
 
   const save = (updates) => mettreAJourDossier(id, updates).then(() => getJournalForDossier(id).then(setJournal))
+
+  const handleBlocageAction = () => {
+    if (!blocageCause) return
+    if (blocageCause.actionType === 'echeance')               { setShowEcheance(true) }
+    else if (blocageCause.actionType === 'relancer')           { save({ etat: 'attente_externe' }) }
+    else                                                        { save({ etat: 'actionnable' }) }
+  }
 
   const handleEtatChange = async (etat) => { haptic('light'); await save({ etat }); setShowEtatSheet(false) }
   const handleClose      = async ()      => { haptic('success'); await save({ etat: 'clos' }); setShowConfirmClose(false); navigate('/dossiers') }
@@ -213,6 +270,22 @@ export default function DossierDetail() {
           )}
         </div>
       </div>
+
+      {/* Banner blocage */}
+      {blocageCause && (
+        <div className="section">
+          <div className="blocage-banner">
+            <svg className="blocage-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+              <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+            </svg>
+            <p className="blocage-phrase">{blocageCause.phrase}</p>
+            <button className="btn blocage-btn" onClick={handleBlocageAction}>
+              {blocageCause.action}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Raison priorité */}
       {dossier.raisonAujourdhui && (
@@ -447,6 +520,25 @@ export default function DossierDetail() {
         .journal-detail { font-size: 13px; color: var(--text-muted); }
         .journal-time { font-size: 11px; color: var(--border); margin-top: 2px; }
         .section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+        .blocage-banner {
+          display: flex; align-items: flex-start; gap: 10px;
+          background: var(--red-light, #fef2f2);
+          border: 1px solid var(--red, #c0392b);
+          border-radius: var(--radius);
+          padding: 14px 14px 14px 14px;
+        }
+        .blocage-icon { color: var(--red); flex-shrink: 0; margin-top: 2px; }
+        .blocage-phrase { flex: 1; font-size: 13px; color: var(--text); line-height: 1.5; }
+        .blocage-btn {
+          flex-shrink: 0;
+          padding: 7px 12px;
+          font-size: 12px; font-weight: 600;
+          background: var(--red); color: #fff;
+          border: none; border-radius: var(--radius-sm);
+          cursor: pointer; white-space: nowrap;
+          transition: opacity 0.15s;
+        }
+        .blocage-btn:active { opacity: 0.8; }
       `}</style>
     </div>
   )
