@@ -683,6 +683,17 @@ export default function Planning() {
       {/* ── Écran de validation IA (overlay plein écran) ─────────────── */}
       {step === 'validation' && proposal && (
         <div className="validation-screen">
+          {/* En-tête avec bouton retour */}
+          <div className="validation-header">
+            <button className="validation-back" onClick={() => setStep(null)}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="15 18 9 12 15 6"/>
+              </svg>
+              Annuler
+            </button>
+            <span className="validation-title">Proposition IA</span>
+          </div>
+
           {/* Bannière raisonnement */}
           <div className="validation-banner">
             <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
@@ -696,8 +707,8 @@ export default function Planning() {
             </div>
           </div>
 
-          {/* Liste des blocs proposés */}
-          <div className="plan-timeline" style={{ padding: '0 16px' }}>
+          {/* Liste des blocs proposés — padding-bottom pour dégager la barre fixe */}
+          <div className="plan-timeline" style={{ padding: '0 16px 130px' }}>
             {propDraft.map(tp => (
               <BlocTache key={tp.tacheId} tp={tp} isFirst={false}
                 editingId={editingId} dureeDraft={dureeDraft}
@@ -706,7 +717,7 @@ export default function Planning() {
             ))}
           </div>
 
-          {/* Barre d'actions sticky */}
+          {/* Barre d'actions fixe en bas */}
           <div className="validation-actions">
             <button className="btn btn-ghost" style={{ flex: 1 }}
               onClick={handleRecalculer} disabled={generating}>
@@ -803,21 +814,34 @@ export default function Planning() {
 
         /* ── Écran validation ──────────────────────────────────────────── */
         .validation-screen {
-          position: fixed; inset: 0; top: var(--nav-height, 0);
+          position: fixed; inset: 0;
           background: var(--bg, #F9F8F5);
           z-index: 100; overflow-y: auto;
-          padding-bottom: 90px;
           animation: valFadeIn 0.2s ease forwards;
         }
         @keyframes valFadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+        .validation-header {
+          display: flex; align-items: center; gap: 10px;
+          padding: 16px 16px 4px;
+        }
+        .validation-back {
+          display: inline-flex; align-items: center; gap: 4px;
+          border: none; background: none;
+          font-size: 14px; color: var(--text-muted); cursor: pointer;
+          padding: 6px 0; font-family: inherit; transition: color 0.15s;
+        }
+        .validation-back:hover { color: var(--text); }
+        .validation-title {
+          font-size: 15px; font-weight: 600; color: var(--text);
+        }
         .validation-banner {
-          margin: 16px 16px 12px; padding: 14px 16px;
+          margin: 12px 16px; padding: 14px 16px;
           background: var(--green-light); border: 1px solid var(--green);
           border-radius: var(--radius);
         }
         .validation-actions {
           position: fixed; bottom: 0; left: 0; right: 0;
-          padding: 12px 16px calc(env(safe-area-inset-bottom, 0px) + 12px);
+          padding: 12px 16px calc(env(safe-area-inset-bottom, 0px) + 16px);
           background: var(--surface); border-top: 1px solid var(--border);
           display: flex; gap: 10px; z-index: 101;
         }

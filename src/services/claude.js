@@ -317,14 +317,22 @@ export async function planifierOptimal({ tachesActives, routinesSelectionnees, h
       ).join('\n')
     : ''
 
+  // Calcul du quota Q2/Q3 minimum à mentionner dans le prompt
+  const nbQ1 = tachesActives.filter(t => t.quadrant === 1).length
+  const nbQ23 = tachesActives.filter(t => t.quadrant === 2 || t.quadrant === 3).length
+  const quotaMsg = nbQ23 > 0
+    ? `CONTRAINTE FORTE : il y a ${nbQ23} tâche(s) Q2/Q3 disponibles — le planning doit en inclure au minimum ${Math.max(1, Math.ceil((nbQ1 + nbQ23) * 0.3))} (soit ≥ 30% du total). Ne jamais retourner un planning composé uniquement de Q1.`
+    : ''
+
   const system = `Tu es une secrétaire de direction experte en gestion du temps et organisation administrative suisse.
 Construis le planning optimal de la journée selon ces règles :
 1. Priorité aux tâches Q1 (urgent & important) et aux échéances imminentes
-2. Alterner urgences et important non urgent — ne pas enchaîner uniquement des Q1
+2. Alterner impérativement les quadrants : si des tâches Q2 ou Q3 existent, les intercaler régulièrement entre les Q1 — ne jamais enchaîner plus de 2 tâches Q1 de suite
 3. Placer les routines aux moments les plus appropriés (ex : emails en début de journée)
 4. Prévoir 10 min de pause entre chaque tâche
 5. Ne pas dépasser l'heure de fin
-6. Exclure les Q4 si le temps manque
+6. Si le temps manque, retirer des Q4 en priorité, puis des Q3, avant de retirer des Q2
+${quotaMsg ? `\n${quotaMsg}` : ''}
 
 Retourne UNIQUEMENT un objet JSON valide :
 {
