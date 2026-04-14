@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 import { genererMessageMatinal } from '../services/claude'
 import DossierCard from '../components/DossierCard'
@@ -57,6 +58,7 @@ function dossiersHash(dossiers) {
 
 export default function Aujourdhui() {
   const { dossiersAujourdhui, loading, apiKey } = useApp()
+  const navigate = useNavigate()
   const [message,    setMessage]    = useState(null)
   const [loadingMsg, setLoadingMsg] = useState(false)
   const [msgError,   setMsgError]   = useState(null)
@@ -192,8 +194,19 @@ export default function Aujourdhui() {
           </div>
         ) : (
           <>
-            <div className="section-label">
-              {dossiersAujourdhui.length} dossier{dossiersAujourdhui.length > 1 ? 's' : ''} prioritaire{dossiersAujourdhui.length > 1 ? 's' : ''}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+              <span className="section-label" style={{ marginBottom: 0 }}>
+                {dossiersAujourdhui.length} dossier{dossiersAujourdhui.length > 1 ? 's' : ''} prioritaire{dossiersAujourdhui.length > 1 ? 's' : ''}
+              </span>
+              <button
+                className="focus-start-btn"
+                onClick={() => navigate('/focus')}
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" style={{ flexShrink: 0 }}>
+                  <polygon points="5 3 19 12 5 21 5 3"/>
+                </svg>
+                Démarrer ma journée
+              </button>
             </div>
             {dossiersAujourdhui.map(d => (
               <DossierCard key={d.id} dossier={d} showRaison />
@@ -283,6 +296,17 @@ export default function Aujourdhui() {
         .refresh-btn:hover { color: var(--green); background: rgba(0,0,0,0.05); }
         .morning-text { font-size: 13px; color: var(--text-secondary); line-height: 1.55; }
 
+        .focus-start-btn {
+          display: flex; align-items: center; gap: 6px;
+          padding: 7px 13px;
+          background: var(--green); color: #fff;
+          border: none; border-radius: 20px;
+          font-size: 12px; font-weight: 600;
+          cursor: pointer; font-family: inherit;
+          transition: opacity 0.15s;
+          white-space: nowrap; flex-shrink: 0;
+        }
+        .focus-start-btn:active { opacity: 0.8; }
         .section-label {
           font-size: 12px;
           font-weight: 500;

@@ -12,6 +12,7 @@ import TousDossiers from './pages/TousDossiers'
 import DossierDetail from './pages/DossierDetail'
 import Journal from './pages/Journal'
 import Reglages from './pages/Reglages'
+import ModeFocus from './pages/ModeFocus'
 
 // ── Revue hebdomadaire Q4 ─────────────────────────────────────────────────────
 function WeeklyReviewModal({ dossiers, onClose, mettreAJourDossier, supprimerDossier }) {
@@ -211,6 +212,7 @@ function AuthenticatedApp() {
           <Route path="/dossiers/:id" element={<DossierDetail />} />
           <Route path="/journal"      element={<Journal />} />
           <Route path="/reglages"     element={<Reglages />} />
+          <Route path="/focus"        element={<ModeFocus />} />
         </Routes>
       </main>
       <Navigation />
