@@ -6,7 +6,7 @@ import EtatBadge from '../components/EtatBadge'
 import QuadrantBadge from '../components/QuadrantBadge'
 import { haptic } from '../utils/haptic'
 
-const MODES = ['Vocal', 'Texte', 'Document', 'Brain dump']
+const MODES = ['Texte', 'Document', 'Brain dump']
 
 function calcQuadrant(u, i) {
   if (u && i)   return 1
@@ -52,10 +52,9 @@ export default function Capturer() {
   const navigate = useNavigate()
   const [mode, setMode] = useState('Texte')
 
-  // Vocal / Brain dump — simple textarea, dictée via clavier natif
+  // Brain dump — textarea, dictée via clavier natif
   const [transcript, setTranscript] = useState('')
-  const vocalRef    = useRef(null)
-  const brainRef    = useRef(null)
+  const brainRef = useRef(null)
 
   // Document
   const [docFile,    setDocFile]    = useState(null)
@@ -94,7 +93,7 @@ export default function Capturer() {
   // ── Analyse ───────────────────────────────────────────────────────────────
   const analyser = useCallback(async () => {
     if (!apiKey) { setError('Clé API requise — configurez-la dans Réglages.'); return }
-    const input = (mode === 'Vocal' || mode === 'Brain dump') ? transcript : texte
+    const input = mode === 'Brain dump' ? transcript : texte
     setError(''); setLoading(true); setProposition(null); setBrainDumpResult(null)
     try {
       if (mode === 'Brain dump') {
@@ -231,7 +230,6 @@ export default function Capturer() {
 
   // ── Vue principale ────────────────────────────────────────────────────────
   const canAnalyse = !loading &&
-    (mode === 'Vocal'      ? transcript.trim() : true) &&
     (mode === 'Brain dump' ? transcript.trim() : true) &&
     (mode === 'Texte'      ? texte.trim()      : true) &&
     (mode === 'Document'   ? !!docBase64        : true)
@@ -254,43 +252,25 @@ export default function Capturer() {
       </div>
 
       <div className="section">
-        {/* ── VOCAL ── */}
-        {mode === 'Vocal' && (
+        {/* ── TEXTE ── */}
+        {mode === 'Texte' && (
           <div className="cap-panel">
-            <textarea
-              ref={vocalRef}
-              className="input textarea vocal-edit"
-              placeholder="Tapez ici, ou appuyez sur Dicter puis sur 🎤 dans votre clavier…"
-              value={transcript}
-              onChange={e => setTranscript(e.target.value)}
-              inputMode="text"
-              enterKeyHint="done"
-              style={{ minHeight: 130, resize: 'vertical' }}
-            />
-            <div style={{ display: 'flex', gap: 10, width: '100%' }}>
-              <button
-                className="dicter-btn"
-                onClick={() => vocalRef.current?.focus()}
-                aria-label="Dicter"
-              >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+            <div className="textarea-wrap">
+              <textarea
+                className="input textarea"
+                placeholder="Décrivez la situation… Ex : J'ai reçu un courrier de la SUVA réclamant un paiement de 340 CHF avant le 15 avril."
+                value={texte}
+                onChange={e => setTexte(e.target.value)}
+                style={{ minHeight: 160, paddingBottom: 36 }}
+              />
+              <span className="mic-hint" title="Utilisez le micro 🎤 de votre clavier pour dicter">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                   <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
                   <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
                   <line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/>
                 </svg>
-                Dicter
-              </button>
-              {transcript && (
-                <button className="btn btn-ghost btn-sm" onClick={() => setTranscript('')}>Effacer</button>
-              )}
+              </span>
             </div>
-          </div>
-        )}
-
-        {/* ── TEXTE ── */}
-        {mode === 'Texte' && (
-          <div className="cap-panel">
-            <textarea className="input textarea" placeholder="Décrivez la situation… Ex : J'ai reçu un courrier de la SUVA réclamant un paiement de 340 CHF avant le 15 avril." value={texte} onChange={e => setTexte(e.target.value)} style={{ minHeight: 160 }} />
           </div>
         )}
 
@@ -339,36 +319,29 @@ export default function Capturer() {
         {mode === 'Brain dump' && (
           <div className="cap-panel">
             <div className="brain-dump-info">
-              <p className="brain-dump-title">Parlez librement</p>
-              <p className="brain-dump-desc">Videz votre esprit à voix haute — factures, démarches, projets… L'IA découpe en dossiers distincts.</p>
+              <p className="brain-dump-title">Videz votre esprit</p>
+              <p className="brain-dump-desc">Tapez ou dictez librement — factures, démarches, projets… L'IA découpe en dossiers distincts.</p>
             </div>
-            <textarea
-              ref={brainRef}
-              className="input textarea vocal-edit"
-              placeholder="Appuyez sur Dicter puis sur 🎤 dans votre clavier, ou tapez directement…"
-              value={transcript}
-              onChange={e => setTranscript(e.target.value)}
-              inputMode="text"
-              enterKeyHint="done"
-              style={{ minHeight: 130, resize: 'vertical' }}
-            />
-            <div style={{ display: 'flex', gap: 10, width: '100%' }}>
-              <button
-                className="dicter-btn"
-                onClick={() => brainRef.current?.focus()}
-                aria-label="Dicter"
-              >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+            <div className="textarea-wrap">
+              <textarea
+                ref={brainRef}
+                className="input textarea"
+                placeholder="Tout ce qui vous passe par la tête… utilisez 🎤 de votre clavier pour dicter."
+                value={transcript}
+                onChange={e => setTranscript(e.target.value)}
+                style={{ minHeight: 140, paddingBottom: 36 }}
+              />
+              <span className="mic-hint" title="Utilisez le micro 🎤 de votre clavier pour dicter">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                   <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
                   <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
                   <line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/>
                 </svg>
-                Dicter
-              </button>
-              {transcript && (
-                <button className="btn btn-ghost btn-sm" onClick={() => setTranscript('')}>Effacer</button>
-              )}
+              </span>
             </div>
+            {transcript && (
+              <button className="btn btn-ghost btn-sm" style={{ alignSelf: 'flex-end' }} onClick={() => setTranscript('')}>Effacer</button>
+            )}
           </div>
         )}
 
@@ -393,19 +366,14 @@ export default function Capturer() {
         .mode-tab { flex: 1; padding: 8px 4px; border: none; background: transparent; border-radius: 7px; font-size: 12px; font-weight: 500; color: var(--text-muted); transition: all 0.15s; white-space: nowrap; }
         .mode-tab-active { background: var(--surface); color: var(--green); box-shadow: var(--shadow); }
         .cap-panel { display: flex; flex-direction: column; align-items: center; gap: 12px; width: 100%; }
-        .vocal-edit { font-size: 15px; line-height: 1.55; color: var(--text); }
-        .dicter-btn {
-          flex: 1;
-          display: flex; align-items: center; justify-content: center; gap: 8px;
-          padding: 13px 20px;
-          border: none; border-radius: var(--radius-sm);
-          background: var(--green); color: #fff;
-          font-size: 15px; font-weight: 600;
-          cursor: pointer;
-          transition: background 0.15s, transform 0.1s;
-          box-shadow: var(--shadow-md);
+        .textarea-wrap { position: relative; width: 100%; }
+        .textarea-wrap .input { width: 100%; }
+        .mic-hint {
+          position: absolute; bottom: 10px; right: 12px;
+          color: var(--text-muted); opacity: 0.5;
+          pointer-events: none;
+          display: flex; align-items: center;
         }
-        .dicter-btn:active { transform: scale(0.97); background: var(--green-dark, #2f6040); }
         .brain-dump-info { width: 100%; padding: 14px 16px; background: var(--green-light); border-radius: var(--radius); border-left: 3px solid var(--green); }
         .brain-dump-title { font-size: 14px; font-weight: 600; color: var(--green); margin-bottom: 4px; }
         .brain-dump-desc { font-size: 13px; color: var(--text-secondary); line-height: 1.5; }
