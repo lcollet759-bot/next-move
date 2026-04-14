@@ -268,6 +268,26 @@ Pas de texte avant ou après le tableau JSON.`
   return result
 }
 
+// ── Estimation IA des durées de tâches pour le planning ───────────────────
+// taches : [{ id, titre, dossierTitre, organisme }]
+// Retourne : [{ tacheId, dureeMin }]
+export async function estimerDureesIA(taches) {
+  if (!taches.length) return []
+
+  const system = `${CONTEXTE_SUISSE}
+Tu es un planificateur expert. Estime la durée réaliste en minutes pour accomplir chaque tâche administrative.
+Règles indicatives : appel = 15-30 min, lettre/rédaction = 45-90 min, formulaire simple = 20-30 min, déclaration complexe = 90-120 min, scanner/payer = 10-15 min, rendez-vous = 60 min.
+Retourne UNIQUEMENT un objet JSON : {"durees":[{"tacheId":"...","dureeMin":30},...]}`
+
+  const liste = taches
+    .map(t => `id="${t.id}" | "${t.titre}"${t.dossierTitre ? ` (${t.dossierTitre}${t.organisme ? ', ' + t.organisme : ''})` : ''}`)
+    .join('\n')
+
+  const raw = await callClaude(system, `Tâches à planifier :\n${liste}`, { maxTokens: 700, temperature: 0 })
+  const parsed = parseJSON(raw)
+  return Array.isArray(parsed.durees) ? parsed.durees : []
+}
+
 // ── Explication "pourquoi aujourd'hui" ────────────────────────────────────
 export async function genererRaison(dossier) {
   if (!getApiKey()) return ''

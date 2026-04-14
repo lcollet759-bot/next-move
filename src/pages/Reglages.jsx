@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 import { useAuth } from '../context/AuthContext'
 import { requestPermission } from '../services/notifications'
@@ -20,7 +21,8 @@ function IconEye({ open }) {
 
 export default function Reglages() {
   const { apiKey, setApiKey, openaiKey, setOpenaiKey, dossiers, journal } = useApp()
-  const { logout } = useAuth()
+  const { logout }   = useAuth()
+  const navigate     = useNavigate()
 
   // Clé API Anthropic
   const [keyInput,    setKeyInput]    = useState(apiKey)
@@ -184,6 +186,22 @@ export default function Reglages() {
               Autorisez les notifications dans les paramètres de votre navigateur.
             </p>
           )}
+        </div>
+      </div>
+
+      {/* Journal d'activité */}
+      <div className="section">
+        <div className="settings-section-title">Historique</div>
+        <div className="card">
+          <div className="row-between">
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 500 }}>Journal d'activité</div>
+              <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>{journal.length} événement{journal.length !== 1 ? 's' : ''} enregistré{journal.length !== 1 ? 's' : ''}</div>
+            </div>
+            <button className="btn btn-ghost btn-sm" onClick={() => navigate('/journal')}>
+              Ouvrir →
+            </button>
+          </div>
         </div>
       </div>
 

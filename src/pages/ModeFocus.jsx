@@ -1,10 +1,14 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 import { haptic } from '../utils/haptic'
+import { savePlanning } from '../services/db'
+import { recalculerApresExtension } from '../services/planning'
+
+const PLANNING_KEY = (date) => `nm-planning-${date}`
 
 // ── Écran de félicitations ────────────────────────────────────────────────────
-function EcranFelicitations({ totalFait, navigate }) {
+function EcranFelicitations({ totalFait, navigate, fromPlanning }) {
   return (
     <div className="focus-page">
       <div className="focus-done-wrap">
@@ -22,9 +26,9 @@ function EcranFelicitations({ totalFait, navigate }) {
         <button
           className="btn btn-primary"
           style={{ marginTop: 32, width: '100%', padding: '15px' }}
-          onClick={() => navigate('/aujourdhui')}
+          onClick={() => navigate(fromPlanning ? '/planning' : '/aujourdhui')}
         >
-          Retour à l'accueil
+          {fromPlanning ? 'Retour au planning' : "Retour à l'accueil"}
         </button>
       </div>
       <style>{focusCSS}</style>
@@ -36,27 +40,46 @@ function EcranFelicitations({ totalFait, navigate }) {
 export default function ModeFocus() {
   const { dossiersAujourdhui, toggleTache } = useApp()
   const navigate = useNavigate()
+  const location = useLocation()
 
-  // Liste construite une seule fois à l'ouverture (initializer useState)
-  const [tasks]      = useState(() =>
-    dossiersAujourdhui.flatMap(dossier =>
+  // ── Mode planning (lancé depuis /planning) ───────────────────────────────
+  const planningDate = location.state?.planningDate || null
+
+  const [planningData, setPlanningData] = useState(() => {
+    if (!planningDate) return null
+    try { return JSON.parse(localStorage.getItem(PLANNING_KEY(planningDate))) } catch { return null }
+  })
+
+  // ── Liste de tâches gelée à l'ouverture ─────────────────────────────────
+  const [tasks] = useState(() => {
+    if (planningData) {
+      return planningData.tachesPlanifiees
+        .filter(tp => !tp.done)
+        .map(tp => ({
+          tache:   { id: tp.tacheId,   titre: tp.titreTache,   done: false },
+          dossier: { id: tp.dossierId, titre: tp.titreDossier, organisme: tp.organisme, quadrant: tp.quadrant },
+        }))
+    }
+    return dossiersAujourdhui.flatMap(dossier =>
       dossier.taches
         .filter(t => !t.done)
         .map(t => ({ tache: t, dossier }))
     )
-  )
+  })
+
   const [index,      setIndex]      = useState(0)
   const [completing, setCompleting] = useState(false)
-  const [fait,       setFait]       = useState(0)   // compteur de tâches cochées
+  const [fait,       setFait]       = useState(0)
+  const [showPlus,   setShowPlus]   = useState(false)
 
   const total   = tasks.length
   const current = tasks[index]
 
-  // Toutes les tâches traitées (faites ou passées)
   if (!current) {
-    return <EcranFelicitations totalFait={fait} navigate={navigate} />
+    return <EcranFelicitations totalFait={fait} navigate={navigate} fromPlanning={!!planningDate} />
   }
 
+  // ── Fait ✓ ───────────────────────────────────────────────────────────────
   const handleFait = async () => {
     if (completing) return
     haptic('success')
@@ -67,21 +90,49 @@ export default function ModeFocus() {
     setIndex(i => i + 1)
   }
 
-  const handlePasser = () => {
-    haptic('light')
-    setIndex(i => i + 1)
+  const handlePasser = () => { haptic('light'); setIndex(i => i + 1) }
+
+  // ── Temps supplémentaire ─────────────────────────────────────────────────
+  const handlePlusTemps = async (dureeSupp) => {
+    setShowPlus(false)
+    if (!planningData || !current) return
+
+    const updated     = recalculerApresExtension(planningData.tachesPlanifiees, current.tache.id, dureeSupp)
+    const newPlanning = { ...planningData, tachesPlanifiees: updated }
+
+    localStorage.setItem(PLANNING_KEY(planningDate), JSON.stringify(newPlanning))
+    setPlanningData(newPlanning)
+
+    try { await savePlanning(newPlanning) } catch (e) { console.error(e) }
+
+    try {
+      if (Notification.permission === 'granted') {
+        new Notification('Planning ajusté', {
+          body: 'Ton planning a été recalculé.',
+          icon: '/favicon.svg',
+          badge: '/favicon.svg',
+        })
+      }
+    } catch {}
   }
 
   const progress = total > 0 ? (index / total) * 100 : 100
+
+  // Créneau de la tâche courante (si mode planning)
+  const creneau = planningData
+    ? planningData.tachesPlanifiees.find(t => t.tacheId === current.tache.id)
+    : null
 
   return (
     <div className="focus-page">
       {/* En-tête */}
       <div className="focus-header">
-        <button className="focus-quit" onClick={() => navigate('/aujourdhui')}>
+        <button className="focus-quit" onClick={() => navigate(planningDate ? '/planning' : '/aujourdhui')}>
           ← Quitter
         </button>
-        <span className="focus-counter">{index + 1} <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>/ {total}</span></span>
+        <span className="focus-counter">
+          {index + 1} <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>/ {total}</span>
+        </span>
       </div>
 
       {/* Barre de progression */}
@@ -99,26 +150,59 @@ export default function ModeFocus() {
             )}
           </p>
           <p className="focus-tache-titre">{current.tache.titre}</p>
+          {creneau && (
+            <p style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 16 }}>
+              {creneau.heureDebut} – {creneau.heureFin}
+            </p>
+          )}
         </div>
       </div>
 
-      {/* Boutons d'action */}
+      {/* Boutons Passer / Fait */}
       <div className="focus-footer">
-        <button
-          className="focus-btn focus-passer"
-          onClick={handlePasser}
-          disabled={completing}
-        >
+        <button className="focus-btn focus-passer" onClick={handlePasser} disabled={completing}>
           Passer
         </button>
-        <button
-          className="focus-btn focus-fait"
-          onClick={handleFait}
-          disabled={completing}
-        >
+        <button className="focus-btn focus-fait" onClick={handleFait} disabled={completing}>
           {completing ? '…' : 'Fait ✓'}
         </button>
       </div>
+
+      {/* "J'ai besoin de plus de temps" — mode planning uniquement */}
+      {planningDate && (
+        <div className="focus-plus-wrap">
+          <button className="focus-plus-btn" onClick={() => setShowPlus(true)} disabled={completing}>
+            J'ai besoin de plus de temps
+          </button>
+        </div>
+      )}
+
+      {/* Modal temps supplémentaire */}
+      {showPlus && (
+        <div className="overlay" onClick={() => setShowPlus(false)}>
+          <div className="sheet" onClick={e => e.stopPropagation()}>
+            <h3 style={{ fontSize: 18, fontWeight: 600, marginBottom: 6 }}>Temps supplémentaire</h3>
+            <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 16, lineHeight: 1.4 }}>
+              Les tâches suivantes seront décalées en conséquence.
+            </p>
+            <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+              {[15, 30, 45, 60].map(m => (
+                <button
+                  key={m}
+                  className="btn btn-secondary"
+                  style={{ flex: 1, padding: '12px 4px', fontSize: 15, fontWeight: 600 }}
+                  onClick={() => handlePlusTemps(m)}
+                >
+                  +{m} min
+                </button>
+              ))}
+            </div>
+            <button className="btn btn-ghost btn-full btn-sm" onClick={() => setShowPlus(false)}>
+              Annuler
+            </button>
+          </div>
+        </div>
+      )}
 
       <style>{focusCSS}</style>
     </div>
@@ -133,35 +217,23 @@ const focusCSS = `
     display: flex; flex-direction: column;
     z-index: 200;
   }
-
-  /* Header */
   .focus-header {
     display: flex; align-items: center; justify-content: space-between;
-    padding: 16px 22px 12px;
-    flex-shrink: 0;
+    padding: 16px 22px 12px; flex-shrink: 0;
   }
   .focus-quit {
     border: none; background: none;
     font-size: 14px; color: var(--text-muted); cursor: pointer;
     padding: 6px 0; font-family: inherit;
   }
-  .focus-counter {
-    font-size: 14px; font-weight: 600; color: var(--text);
-  }
-
-  /* Barre */
-  .focus-track {
-    height: 3px; background: var(--border); flex-shrink: 0;
-  }
+  .focus-counter { font-size: 14px; font-weight: 600; color: var(--text); }
+  .focus-track { height: 3px; background: var(--border); flex-shrink: 0; }
   .focus-fill {
     height: 100%; background: var(--green);
     transition: width 0.35s cubic-bezier(0.4, 0, 0.2, 1);
   }
-
-  /* Corps */
   .focus-body {
-    flex: 1; display: flex;
-    align-items: center; justify-content: center;
+    flex: 1; display: flex; align-items: center; justify-content: center;
     padding: 28px 22px;
   }
   .focus-card {
@@ -176,20 +248,16 @@ const focusCSS = `
     to   { opacity: 1; transform: translateY(0); }
   }
   .focus-dossier-label {
-    font-size: 11px; font-weight: 700;
-    color: var(--text-muted);
+    font-size: 11px; font-weight: 700; color: var(--text-muted);
     text-transform: uppercase; letter-spacing: 2px;
     margin-bottom: 18px; line-height: 1.4;
   }
   .focus-tache-titre {
-    font-size: 26px; font-weight: 600;
-    color: var(--text); line-height: 1.25;
-    letter-spacing: -0.6px;
+    font-size: 26px; font-weight: 600; color: var(--text);
+    line-height: 1.25; letter-spacing: -0.6px;
   }
-
-  /* Footer */
   .focus-footer {
-    padding: 16px 22px calc(env(safe-area-inset-bottom, 0px) + 22px);
+    padding: 16px 22px 8px;
     display: flex; gap: 10px; flex-shrink: 0;
   }
   .focus-btn {
@@ -201,16 +269,21 @@ const focusCSS = `
   }
   .focus-btn:active { transform: scale(0.97); }
   .focus-btn:disabled { opacity: 0.45; pointer-events: none; }
-  .focus-passer {
-    background: var(--gray-light, #F2F1EE);
-    color: var(--text-muted); flex: 0.55;
+  .focus-passer { background: var(--gray-light, #F2F1EE); color: var(--text-muted); flex: 0.55; }
+  .focus-fait   { background: var(--green, #3D7A52); color: #fff; flex: 1; }
+  .focus-plus-wrap {
+    padding: 0 22px calc(env(safe-area-inset-bottom, 0px) + 16px);
+    text-align: center; flex-shrink: 0;
   }
-  .focus-fait {
-    background: var(--green, #3D7A52);
-    color: #fff; flex: 1;
+  .focus-plus-btn {
+    border: none; background: none;
+    font-size: 13px; color: var(--text-muted); cursor: pointer;
+    font-family: inherit; padding: 6px 12px;
+    text-decoration: underline; text-decoration-color: var(--border);
+    transition: color 0.15s;
   }
-
-  /* Félicitations */
+  .focus-plus-btn:hover  { color: var(--text); }
+  .focus-plus-btn:disabled { opacity: 0.4; pointer-events: none; }
   .focus-done-wrap {
     flex: 1; display: flex; flex-direction: column;
     align-items: center; justify-content: center;
@@ -228,11 +301,8 @@ const focusCSS = `
     to   { transform: scale(1); opacity: 1; }
   }
   .focus-done-title {
-    font-size: 30px; font-weight: 700;
-    color: var(--text); letter-spacing: -1px;
-    margin-bottom: 10px;
+    font-size: 30px; font-weight: 700; color: var(--text);
+    letter-spacing: -1px; margin-bottom: 10px;
   }
-  .focus-done-sub {
-    font-size: 15px; color: var(--text-muted); line-height: 1.5;
-  }
+  .focus-done-sub { font-size: 15px; color: var(--text-muted); line-height: 1.5; }
 `
