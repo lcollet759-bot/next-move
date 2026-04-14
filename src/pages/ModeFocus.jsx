@@ -4,6 +4,7 @@ import { useApp } from '../context/AppContext'
 import { haptic } from '../utils/haptic'
 import { savePlanning } from '../services/db'
 import { recalculerApresExtension } from '../services/planning'
+import DossierSheet from '../components/DossierSheet'
 
 const PLANNING_KEY = (date) => `nm-planning-${date}`
 
@@ -71,6 +72,7 @@ export default function ModeFocus() {
   const [completing, setCompleting] = useState(false)
   const [fait,       setFait]       = useState(0)
   const [showPlus,   setShowPlus]   = useState(false)
+  const [showSheet,  setShowSheet]  = useState(false)
 
   const total   = tasks.length
   const current = tasks[index]
@@ -150,8 +152,20 @@ export default function ModeFocus() {
             )}
           </p>
           <p className="focus-tache-titre">{current.tache.titre}</p>
+
+          {/* Lien dossier parent → ouvre le panneau */}
+          <button className="focus-dossier-link" onClick={() => setShowSheet(true)}>
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+            </svg>
+            {current.dossier.titre}
+            {current.dossier.organisme && (
+              <span style={{ opacity: 0.6 }}> · {current.dossier.organisme}</span>
+            )}
+          </button>
+
           {creneau && (
-            <p style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 16 }}>
+            <p style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 8 }}>
               {creneau.heureDebut} – {creneau.heureFin}
             </p>
           )}
@@ -202,6 +216,14 @@ export default function ModeFocus() {
             </button>
           </div>
         </div>
+      )}
+
+      {/* Panneau dossier contextuel */}
+      {showSheet && (
+        <DossierSheet
+          dossierId={current.dossier.id}
+          onClose={() => setShowSheet(false)}
+        />
       )}
 
       <style>{focusCSS}</style>
@@ -256,6 +278,18 @@ const focusCSS = `
     font-size: 26px; font-weight: 600; color: var(--text);
     line-height: 1.25; letter-spacing: -0.6px;
   }
+  .focus-dossier-link {
+    display: inline-flex; align-items: center; gap: 5px;
+    margin-top: 14px;
+    border: none; background: none; padding: 0;
+    font-size: 12px; font-weight: 500; color: var(--text-muted);
+    cursor: pointer; font-family: inherit;
+    text-decoration: underline; text-decoration-color: var(--border);
+    text-underline-offset: 2px;
+    transition: color 0.15s;
+    max-width: 100%; text-align: left;
+  }
+  .focus-dossier-link:hover { color: var(--text); }
   .focus-footer {
     padding: 16px 22px 8px;
     display: flex; gap: 10px; flex-shrink: 0;
