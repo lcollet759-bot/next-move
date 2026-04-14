@@ -59,10 +59,12 @@ export default function Aujourdhui() {
   const { dossiersAujourdhui, loading, apiKey } = useApp()
   const [message,    setMessage]    = useState(null)
   const [loadingMsg, setLoadingMsg] = useState(false)
+  const [msgError,   setMsgError]   = useState(null)
 
   function generer(dossiers) {
     const today = new Date().toDateString()
     setLoadingMsg(true)
+    setMsgError(null)
     genererMessageMatinal(dossiers)
       .then(msg => {
         if (msg) {
@@ -72,7 +74,7 @@ export default function Aujourdhui() {
           localStorage.setItem(HASH_KEY, dossiersHash(dossiers))
         }
       })
-      .catch(() => {})
+      .catch(err => setMsgError(err?.message || 'Erreur lors de la génération du résumé.'))
       .finally(() => setLoadingMsg(false))
   }
 
@@ -80,6 +82,7 @@ export default function Aujourdhui() {
     if (!apiKey || dossiersAujourdhui.length === 0 || loadingMsg) return
     localStorage.removeItem(MSG_KEY)
     setMessage(null)
+    setMsgError(null)
     generer(dossiersAujourdhui)
   }
 
@@ -132,7 +135,7 @@ export default function Aujourdhui() {
       </div>
 
       {/* Message matinal IA */}
-      {(message || loadingMsg) && (
+      {(message || loadingMsg || msgError) && (
         <div className="section">
           <div className="morning-card">
             <div className="morning-dot" />
@@ -142,6 +145,8 @@ export default function Aujourdhui() {
                   <div className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} />
                   <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>Préparation du résumé…</span>
                 </div>
+              ) : msgError ? (
+                <p style={{ fontSize: 13, color: 'var(--red)', lineHeight: 1.5 }}>{msgError}</p>
               ) : (
                 <p className="morning-text">{renderMarkdown(message)}</p>
               )}
