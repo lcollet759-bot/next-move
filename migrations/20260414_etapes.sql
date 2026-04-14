@@ -5,8 +5,8 @@
 
 -- ── Table ──────────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS etapes (
-  id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-  dossier_id  UUID        NOT NULL REFERENCES dossiers(id) ON DELETE CASCADE,
+  id          TEXT        PRIMARY KEY,
+  dossier_id  TEXT        NOT NULL REFERENCES dossiers(id) ON DELETE CASCADE,
   date        DATE        NOT NULL,
   texte       TEXT        NOT NULL,
   statut      TEXT        NOT NULL DEFAULT 'fait'
