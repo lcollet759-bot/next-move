@@ -13,6 +13,23 @@ function todayISO() {
   return new Date().toISOString().split('T')[0]
 }
 
+// Mappe un état dossier vers le statut d'étape correspondant
+const ETAT_TO_ETAPE_STATUT = {
+  actionnable:     'fait',
+  attente_externe: 'en_attente',
+  bloque:          'bloque',
+  surveille:       'en_attente',
+  clos:            'fait',
+}
+
+const ETAT_TO_ETAPE_TEXTE = {
+  actionnable:     'Passé en actionnable',
+  attente_externe: 'Passé en attente externe',
+  bloque:          'Passage en bloqué',
+  surveille:       'Passé en surveillance',
+  clos:            'Dossier clôturé',
+}
+
 function calcQuadrant(urgence, importance) {
   if (urgence && importance)  return 1
   if (!urgence && importance) return 2
@@ -260,6 +277,16 @@ export function AppProvider({ children }) {
               }
               newJournalEntries.push(entry)
               ops.push(db.addJournalEntry(entry))
+              // Tracer aussi dans l'historique dossier
+              ops.push(db.addEtape({
+                id:        uuid(),
+                dossierId: uid,
+                date:      today,
+                texte:     (ETAT_TO_ETAPE_TEXTE[merged.etat] || `→ ${merged.etat}`) + ' (automatique)',
+                statut:    ETAT_TO_ETAPE_STATUT[merged.etat] || 'fait',
+                source:    'auto',
+                createdAt: now,
+              }))
             }
 
             // Journaliser et notifier l'escalade Q4 → Important
@@ -274,6 +301,16 @@ export function AppProvider({ children }) {
               newJournalEntries.push(entry)
               ops.push(db.addJournalEntry(entry))
               notifyEscalade(dossier.titre)
+              // Tracer dans l'historique dossier
+              ops.push(db.addEtape({
+                id:        uuid(),
+                dossierId: uid,
+                date:      today,
+                texte:     'Escalade automatique — dossier Q4 inactif ≥ 15 jours, passé en Important',
+                statut:    'en_attente',
+                source:    'auto',
+                createdAt: now,
+              }))
             }
 
             return Promise.all(ops)
@@ -340,6 +377,16 @@ export function AppProvider({ children }) {
     dispatch({ type: 'ADD_DOSSIER', dossier })
     if (dossier.echeance) setReminder(dossier.id, dossier.titre, dossier.echeance)
     await log(dossier.id, 'Création', `Dossier créé via ${dossier.origine}`)
+    // Étape initiale dans l'historique
+    await db.addEtape({
+      id:        uuid(),
+      dossierId: dossier.id,
+      date:      todayISO(),
+      texte:     'Dossier ouvert',
+      statut:    'fait',
+      source:    'auto',
+      createdAt: dossier.createdAt,
+    })
     return dossier
   }, [])
 
@@ -385,6 +432,16 @@ export function AppProvider({ children }) {
         clos:            'Clôturé'
       }
       await log(id, 'Changement d\'état', `→ ${labels[updates.etat] || updates.etat}`)
+      // Tracer la transition dans l'historique du dossier
+      await db.addEtape({
+        id:        uuid(),
+        dossierId: id,
+        date:      todayISO(),
+        texte:     ETAT_TO_ETAPE_TEXTE[updates.etat] || `→ ${updates.etat}`,
+        statut:    ETAT_TO_ETAPE_STATUT[updates.etat] || 'fait',
+        source:    'auto',
+        createdAt: new Date().toISOString(),
+      })
     }
     return updated
   }, [state.dossiers])
@@ -419,6 +476,25 @@ export function AppProvider({ children }) {
     await db.saveDossier(updated)
     dispatch({ type: 'UPDATE_DOSSIER', dossier: updated })
   }, [state.dossiers])
+
+  // ── Étapes manuelles ─────────────────────────────────────────────────────
+  const ajouterEtapeManuelle = useCallback(async (dossierId, { date, texte, statut }) => {
+    const titreTrim = (texte || '').trim()
+    if (!titreTrim) return
+    await db.addEtape({
+      id:        uuid(),
+      dossierId,
+      date:      date || todayISO(),
+      texte:     titreTrim,
+      statut:    statut || 'fait',
+      source:    'manuel',
+      createdAt: new Date().toISOString(),
+    })
+  }, [])
+
+  const supprimerEtape = useCallback(async (etapeId) => {
+    await db.deleteEtape(etapeId)
+  }, [])
 
   // ── Suppression dossier ───────────────────────────────────────────────────
   const supprimerDossier = useCallback(async (id) => {
@@ -455,6 +531,8 @@ export function AppProvider({ children }) {
       ajouterTache,
       supprimerTache,
       supprimerDossier,
+      ajouterEtapeManuelle,
+      supprimerEtape,
       setApiKey,
       setOpenaiKey
     }}>

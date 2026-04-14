@@ -138,3 +138,55 @@ export async function addJournalEntry(entry) {
     .insert(toJournalRow(entry))
   raise(error, 'addJournalEntry')
 }
+
+// ── Étapes (dossiers vivants) ─────────────────────────────────────────────
+
+function toEtapeRow(e) {
+  return {
+    id:         e.id,
+    dossier_id: e.dossierId,
+    date:       e.date,
+    texte:      e.texte,
+    statut:     e.statut,
+    source:     e.source ?? 'manuel',
+    created_at: e.createdAt,
+  }
+}
+
+function fromEtapeRow(r) {
+  return {
+    id:        r.id,
+    dossierId: r.dossier_id,
+    date:      r.date,
+    texte:     r.texte,
+    statut:    r.statut,
+    source:    r.source,
+    createdAt: r.created_at,
+  }
+}
+
+export async function getEtapesForDossier(dossierId) {
+  const { data, error } = await supabase
+    .from('etapes')
+    .select('*')
+    .eq('dossier_id', dossierId)
+    .order('date',       { ascending: true })
+    .order('created_at', { ascending: true })
+  raise(error, 'getEtapesForDossier')
+  return (data ?? []).map(fromEtapeRow)
+}
+
+export async function addEtape(etape) {
+  const { error } = await supabase
+    .from('etapes')
+    .insert(toEtapeRow(etape))
+  raise(error, 'addEtape')
+}
+
+export async function deleteEtape(id) {
+  const { error } = await supabase
+    .from('etapes')
+    .delete()
+    .eq('id', id)
+  raise(error, 'deleteEtape')
+}

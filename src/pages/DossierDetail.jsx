@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
-import { getJournalForDossier } from '../services/db'
+import { getJournalForDossier, getEtapesForDossier } from '../services/db'
 import EtatBadge from '../components/EtatBadge'
 import QuadrantBadge from '../components/QuadrantBadge'
 import { haptic } from '../utils/haptic'
@@ -70,9 +70,18 @@ function analyserCauseBlocage(dossier) {
   }
 }
 
+// ── Étapes : constantes ───────────────────────────────────────────────────────
+const ETAPE_STATUT_LABELS = { fait: 'Fait', en_attente: 'En attente', bloque: 'Bloqué' }
+
 function formatDate(iso) {
   if (!iso) return null
   return new Date(iso + 'T00:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })
+}
+
+// Affiche 'DD MMM YYYY' (ex : 14 avr. 2026) — pour la timeline
+function formatDateShort(iso) {
+  if (!iso) return ''
+  return new Date(iso + 'T00:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
 function formatDateTime(iso) {
@@ -131,10 +140,11 @@ function InlineField({ value, onSave, multiline = false, placeholder = '', style
 export default function DossierDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { dossiers, mettreAJourDossier, toggleTache, ajouterTache, supprimerTache, supprimerDossier } = useApp()
+  const { dossiers, mettreAJourDossier, toggleTache, ajouterTache, supprimerTache, supprimerDossier, ajouterEtapeManuelle, supprimerEtape } = useApp()
 
   const dossier = dossiers.find(d => d.id === id)
   const [journal,          setJournal]          = useState([])
+  const [etapes,           setEtapes]           = useState([])
   const [showEtatSheet,    setShowEtatSheet]     = useState(false)
   const [showConfirmClose, setShowConfirmClose]  = useState(false)
   const [showConfirmDel,   setShowConfirmDel]    = useState(false)
@@ -143,13 +153,21 @@ export default function DossierDetail() {
   const [echeance,         setEcheance]          = useState('')
   const [editingTacheId,   setEditingTacheId]    = useState(null)
   const [tacheDraft,       setTacheDraft]        = useState('')
+  // Étapes : état du formulaire d'ajout
+  const [showAddEtape,     setShowAddEtape]      = useState(false)
+  const [newEtapeDate,     setNewEtapeDate]      = useState('')
+  const [newEtapeTexte,    setNewEtapeTexte]     = useState('')
+  const [newEtapeStatut,   setNewEtapeStatut]    = useState('fait')
   const newTacheRef   = useRef(null)
   const tacheInputRef = useRef(null)
+
+  const reloadEtapes = () => getEtapesForDossier(id).then(setEtapes)
 
   useEffect(() => {
     if (dossier) {
       setEcheance(dossier.echeance || '')
       getJournalForDossier(id).then(setJournal)
+      reloadEtapes()
     }
   }, [dossier, id])
 
@@ -175,13 +193,36 @@ export default function DossierDetail() {
   const tachesDone  = dossier.taches.filter(t => t.done).length
   const blocageCause = dossier.etat === 'bloque' && !isClos ? analyserCauseBlocage(dossier) : null
 
-  const save = (updates) => mettreAJourDossier(id, updates).then(() => getJournalForDossier(id).then(setJournal))
+  const save = (updates) => mettreAJourDossier(id, updates).then(() =>
+    Promise.all([getJournalForDossier(id).then(setJournal), reloadEtapes()])
+  )
 
   const handleBlocageAction = () => {
     if (!blocageCause) return
     if (blocageCause.actionType === 'echeance')               { setShowEcheance(true) }
     else if (blocageCause.actionType === 'relancer')           { save({ etat: 'attente_externe' }) }
     else                                                        { save({ etat: 'actionnable' }) }
+  }
+
+  const handleAddEtape = async () => {
+    if (!newEtapeTexte.trim()) return
+    haptic('light')
+    await ajouterEtapeManuelle(id, {
+      date:   newEtapeDate || new Date().toISOString().split('T')[0],
+      texte:  newEtapeTexte.trim(),
+      statut: newEtapeStatut,
+    })
+    setShowAddEtape(false)
+    setNewEtapeTexte('')
+    setNewEtapeDate('')
+    setNewEtapeStatut('fait')
+    await reloadEtapes()
+  }
+
+  const handleDeleteEtape = async (etapeId) => {
+    haptic('medium')
+    await supprimerEtape(etapeId)
+    await reloadEtapes()
   }
 
   const handleEtatChange = async (etat) => { haptic('light'); await save({ etat }); setShowEtatSheet(false) }
@@ -403,21 +444,112 @@ export default function DossierDetail() {
         </div>
       )}
 
-      {/* Journal */}
-      {journal.length > 0 && (
-        <div className="section">
-          <span className="label">Historique</span>
-          <div className="card" style={{ padding: '4px 12px' }}>
-            {journal.map(entry => (
-              <div key={entry.id} className="journal-row">
-                <div className="journal-action">{entry.action}</div>
-                <div className="journal-detail">{entry.detail}</div>
-                <div className="journal-time">{formatDateTime(entry.timestamp)}</div>
+      {/* ── Historique (dossier vivant) ───────────────────────────────── */}
+      <div className="section">
+        <div className="section-header">
+          <span className="label" style={{ marginBottom: 0 }}>Historique</span>
+          {!isClos && !showAddEtape && (
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={() => {
+                setNewEtapeDate(new Date().toISOString().split('T')[0])
+                setShowAddEtape(true)
+              }}
+            >
+              + Ajouter une étape
+            </button>
+          )}
+        </div>
+
+        {/* Formulaire d'ajout inline */}
+        {showAddEtape && (
+          <div className="card etape-form">
+            <div className="etape-form-row">
+              <input
+                type="date"
+                className="input"
+                style={{ flex: '0 0 auto', width: 150 }}
+                value={newEtapeDate}
+                onChange={e => setNewEtapeDate(e.target.value)}
+              />
+              <div className="etape-statut-group">
+                {['fait', 'en_attente', 'bloque'].map(s => (
+                  <button
+                    key={s}
+                    className={`etape-statut-btn etape-statut-${s}${newEtapeStatut === s ? ' etape-statut-active' : ''}`}
+                    onClick={() => setNewEtapeStatut(s)}
+                    type="button"
+                  >
+                    {ETAPE_STATUT_LABELS[s]}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <textarea
+              className="input textarea"
+              rows={2}
+              placeholder="Décrivez cette étape… (ex : Lettre envoyée à la gérance)"
+              value={newEtapeTexte}
+              onChange={e => setNewEtapeTexte(e.target.value)}
+              style={{ marginTop: 10, marginBottom: 10, fontSize: 14 }}
+              autoFocus
+            />
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button className="btn btn-ghost btn-sm" onClick={() => { setShowAddEtape(false); setNewEtapeTexte('') }}>
+                Annuler
+              </button>
+              <button
+                className="btn btn-primary btn-sm"
+                style={{ flex: 1 }}
+                onClick={handleAddEtape}
+                disabled={!newEtapeTexte.trim()}
+              >
+                Ajouter l'étape
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Timeline */}
+        {etapes.length === 0 && !showAddEtape ? (
+          <p style={{ fontSize: 13, color: 'var(--text-muted)', padding: '4px 0' }}>
+            Aucune étape enregistrée.
+          </p>
+        ) : (
+          <div className="etapes-timeline">
+            {etapes.map((etape, idx) => (
+              <div key={etape.id} className={`etape-item${etape.source === 'auto' ? ' etape-item-auto' : ''}`}>
+                {/* Fil + dot */}
+                <div className="etape-track">
+                  <div className={`etape-dot etape-dot-${etape.statut}`} />
+                  {idx < etapes.length - 1 && <div className="etape-line" />}
+                </div>
+                {/* Contenu */}
+                <div className="etape-body">
+                  <div className="etape-meta">
+                    <span className="etape-date">{formatDateShort(etape.date)}</span>
+                    <span className={`etape-badge etape-badge-${etape.statut}`}>
+                      {ETAPE_STATUT_LABELS[etape.statut]}
+                    </span>
+                    {etape.source === 'auto' && (
+                      <span className="etape-auto-tag">auto</span>
+                    )}
+                  </div>
+                  <p className="etape-texte">{etape.texte}</p>
+                </div>
+                {/* Supprimer (uniquement étapes manuelles, dossier non clos) */}
+                {!isClos && etape.source === 'manuel' && (
+                  <button
+                    className="tache-del"
+                    onClick={() => handleDeleteEtape(etape.id)}
+                    aria-label="Supprimer cette étape"
+                  >×</button>
+                )}
               </div>
             ))}
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Sheet : changement état */}
       {showEtatSheet && (
@@ -539,6 +671,78 @@ export default function DossierDetail() {
           transition: opacity 0.15s;
         }
         .blocage-btn:active { opacity: 0.8; }
+
+        /* ── Historique / Étapes ─────────────────────────────────────── */
+        .etape-form {
+          padding: 14px 16px;
+          margin-bottom: 12px;
+        }
+        .etape-form-row {
+          display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+        }
+        .etape-statut-group {
+          display: flex; gap: 4px; flex-wrap: wrap;
+        }
+        .etape-statut-btn {
+          padding: 5px 10px;
+          border-radius: 20px;
+          border: 1.5px solid var(--border);
+          background: transparent;
+          font-size: 12px; font-weight: 500;
+          cursor: pointer; font-family: inherit;
+          transition: all 0.15s; color: var(--text-muted);
+        }
+        .etape-statut-btn.etape-statut-active.etape-statut-fait       { background: var(--green-light);  border-color: var(--green);  color: var(--green); }
+        .etape-statut-btn.etape-statut-active.etape-statut-en_attente { background: var(--amber-light, #fffbeb); border-color: var(--amber, #d97706); color: var(--amber, #d97706); }
+        .etape-statut-btn.etape-statut-active.etape-statut-bloque     { background: var(--red-light, #fef2f2); border-color: var(--red); color: var(--red); }
+
+        /* Timeline */
+        .etapes-timeline { padding-top: 4px; }
+        .etape-item {
+          display: flex; align-items: flex-start; gap: 10px;
+          min-height: 44px; position: relative;
+        }
+        .etape-item-auto { opacity: 0.75; }
+        .etape-track {
+          display: flex; flex-direction: column; align-items: center;
+          flex-shrink: 0; width: 18px; padding-top: 3px;
+        }
+        .etape-dot {
+          width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0;
+        }
+        .etape-dot-fait       { background: var(--green); }
+        .etape-dot-en_attente { background: var(--amber, #d97706); }
+        .etape-dot-bloque     { background: var(--red); }
+        .etape-line {
+          flex: 1; width: 2px; background: var(--border);
+          margin-top: 4px; min-height: 18px;
+        }
+        .etape-body {
+          flex: 1; padding-bottom: 14px;
+        }
+        .etape-meta {
+          display: flex; align-items: center; gap: 6px;
+          flex-wrap: wrap; margin-bottom: 3px;
+        }
+        .etape-date {
+          font-size: 11px; color: var(--text-muted); font-weight: 500;
+        }
+        .etape-badge {
+          font-size: 10px; font-weight: 700; padding: 2px 7px;
+          border-radius: 20px; text-transform: uppercase; letter-spacing: 0.04em;
+        }
+        .etape-badge-fait       { background: var(--green-light);  color: var(--green); }
+        .etape-badge-en_attente { background: var(--amber-light, #fffbeb); color: var(--amber, #d97706); }
+        .etape-badge-bloque     { background: var(--red-light, #fef2f2); color: var(--red); }
+        .etape-auto-tag {
+          font-size: 10px; color: var(--text-muted);
+          background: var(--gray-light); padding: 2px 6px; border-radius: 20px;
+          font-style: italic;
+        }
+        .etape-texte {
+          font-size: 14px; color: var(--text); line-height: 1.45; margin: 0;
+        }
+        .etape-item-auto .etape-texte { color: var(--text-muted); font-size: 13px; }
       `}</style>
     </div>
   )
