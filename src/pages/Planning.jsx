@@ -7,7 +7,7 @@ import {
   getPlanningForDate, savePlanning,
   getRoutines, saveRoutine, deleteRoutine,
 } from '../services/db'
-import { planifierOptimal, estimerDureesIA } from '../services/claude'
+import { planifierAvecDurees } from '../services/claude'
 import {
   estimerDureeFallback,
   genererCreneaux,
@@ -437,30 +437,16 @@ export default function Planning() {
     setGenerating(true)
     setGenError(null)
 
-    const startMin  = heureDeDepart()
-    const startTime = minutesToHHMM(startMin)
+    const startMin   = heureDeDepart()
+    const startTime  = minutesToHHMM(startMin)
     const tachesBase = buildTachesBase(dossiersAujourdhui, routinesSelected)
 
-    // Enrichir les durées via IA si possible
-    const tachesActives = tachesBase.filter(t => !t.isRoutine)
-    if (apiKey && tachesActives.length > 0) {
-      try {
-        const res = await estimerDureesIA(
-          tachesActives.map(t => ({ id: t.tacheId, titre: t.titreTache, dossierTitre: t.titreDossier, organisme: t.organisme }))
-        )
-        res.forEach(d => {
-          const t = tachesBase.find(x => x.tacheId === d.tacheId)
-          if (t && d.dureeMin > 0) t.dureeMin = d.dureeMin
-        })
-      } catch {}
-    }
-
-    // Planification IA ou fallback
+    // Un seul appel IA : estime les durées manquantes ET construit le planning
     if (apiKey && tachesBase.length > 0) {
       try {
         const ctx = { tachesActives: tachesBase, routinesSelectionnees: routinesSelected, heuresTotales, heureDepart: startTime }
         setPlanCtx(ctx)
-        const result = await planifierOptimal(ctx)
+        const result  = await planifierAvecDurees(ctx)
         const enriched = enrichProposal(result.taches, tachesBase)
         setProposal(result)
         setPropDraft(enriched)
@@ -468,7 +454,6 @@ export default function Planning() {
         setGenerating(false)
         return
       } catch (e) {
-        // Fallback si Claude échoue
         console.warn('[Planning] IA indisponible, fallback:', e.message)
       }
     }
@@ -485,7 +470,7 @@ export default function Planning() {
     setGenerating(true)
     setGenError(null)
     try {
-      const result   = await planifierOptimal(planCtx)
+      const result   = await planifierAvecDurees(planCtx)
       const enriched = enrichProposal(result.taches, buildTachesBase(dossiersAujourdhui, planCtx.routinesSelectionnees))
       setProposal(result)
       setPropDraft(enriched)

@@ -268,35 +268,57 @@ Pas de texte avant ou après le tableau JSON.`
   return result
 }
 
-// ── Estimation IA des durées de tâches pour le planning ───────────────────
-// taches : [{ id, titre, dossierTitre, organisme }]
-// Retourne : [{ tacheId, dureeMin }]
-export async function estimerDureesIA(taches) {
-  if (!taches.length) return []
+// ── Cache localStorage des durées estimées par type de tâche ─────────────────
+// Clé : titre normalisé (minuscule, sans ponctuation) → duréeMin
+// Permet de réutiliser une estimation sans rappeler l'API.
+const DUREES_CACHE_KEY = 'nm-durees-cache'
 
-  const system = `${CONTEXTE_SUISSE}
-Tu es un planificateur expert. Estime la durée réaliste en minutes pour accomplir chaque tâche administrative.
-Règles indicatives : appel = 15-30 min, lettre/rédaction = 45-90 min, formulaire simple = 20-30 min, déclaration complexe = 90-120 min, scanner/payer = 10-15 min, rendez-vous = 60 min.
-Retourne UNIQUEMENT un objet JSON : {"durees":[{"tacheId":"...","dureeMin":30},...]}`
-
-  const liste = taches
-    .map(t => `id="${t.id}" | "${t.titre}"${t.dossierTitre ? ` (${t.dossierTitre}${t.organisme ? ', ' + t.organisme : ''})` : ''}`)
-    .join('\n')
-
-  const raw = await callClaude(system, `Tâches à planifier :\n${liste}`, { maxTokens: 700, temperature: 0 })
-  const parsed = parseJSON(raw)
-  return Array.isArray(parsed.durees) ? parsed.durees : []
+function normaliserTitre(titre) {
+  return titre.toLowerCase().replace(/[^a-z0-9àâçéèêëîïôùûüæœ ]/g, '').trim()
 }
 
-// ── Planning optimal IA ────────────────────────────────────────────────────
+export function getDureesCache() {
+  try { return JSON.parse(localStorage.getItem(DUREES_CACHE_KEY)) || {} } catch { return {} }
+}
+
+function saveDureesCache(cache) {
+  try { localStorage.setItem(DUREES_CACHE_KEY, JSON.stringify(cache)) } catch {}
+}
+
+// Lit le cache pour une liste de tâches et retourne :
+//   { hits: [{tacheId, dureeMin}], misses: [{id, titre, dossierTitre, organisme}] }
+function resoudreDureesCachees(taches) {
+  const cache = getDureesCache()
+  const hits = [], misses = []
+  for (const t of taches) {
+    const key   = normaliserTitre(t.titre)
+    const duree = cache[key]
+    if (duree) hits.push({ tacheId: t.id, dureeMin: duree })
+    else       misses.push(t)
+  }
+  return { hits, misses }
+}
+
+// Met à jour le cache avec les nouvelles estimations reçues de l'IA
+function enregistrerDurees(taches, durees) {
+  const cache = getDureesCache()
+  for (const d of durees) {
+    const t = taches.find(x => x.id === d.tacheId)
+    if (t && d.dureeMin > 0) cache[normaliserTitre(t.titre)] = d.dureeMin
+  }
+  saveDureesCache(cache)
+}
+
+// ── Planification optimale IA (durées + ordonnancement en un seul appel) ──────
 // tachesActives : [{ tacheId, titreTache, titreDossier, organisme, quadrant, echeance, dureeMin }]
+//   dureeMin ici = estimation fallback, sera affinée par l'IA si pas en cache
 // routinesSelectionnees : [{ id, titre, dureeMin }]
 // Retourne : { raisonnement: string, taches: [{ tacheId, dureeMin, heureDebut, heureFin }] }
-export async function planifierOptimal({ tachesActives, routinesSelectionnees, heuresTotales, heureDepart }) {
+export async function planifierAvecDurees({ tachesActives, routinesSelectionnees, heuresTotales, heureDepart }) {
   if (!tachesActives.length && !routinesSelectionnees.length) return null
 
   const [hD, mD] = (heureDepart || '09:00').split(':').map(Number)
-  const endMin   = hD * 60 + mD + Math.round(heuresTotales * 60)
+  const endMin    = hD * 60 + mD + Math.round(heuresTotales * 60)
   const heuresFin = `${String(Math.floor(endMin / 60)).padStart(2, '0')}:${String(endMin % 60).padStart(2, '0')}`
 
   const QUADRANT_LABELS = {
@@ -304,11 +326,37 @@ export async function planifierOptimal({ tachesActives, routinesSelectionnees, h
     3: 'urgent non important', 4: 'ni urgent ni important'
   }
 
+  // ── Résolution des durées depuis le cache ─────────────────────────────────
+  const tachesNonRoutines = tachesActives.filter(t => !t.isRoutine)
+  const { hits, misses } = resoudreDureesCachees(
+    tachesNonRoutines.map(t => ({ id: t.tacheId, titre: t.titreTache, dossierTitre: t.titreDossier, organisme: t.organisme }))
+  )
+
+  // Appliquer les hits de cache directement
+  hits.forEach(h => {
+    const t = tachesActives.find(x => x.tacheId === h.tacheId)
+    if (t) t.dureeMin = h.dureeMin
+  })
+
+  const besoinEstimation = misses.length > 0
+
+  // ── Construction du prompt ────────────────────────────────────────────────
+  const nbQ1  = tachesActives.filter(t => t.quadrant === 1).length
+  const nbQ23 = tachesActives.filter(t => t.quadrant === 2 || t.quadrant === 3).length
+  const quotaMsg = nbQ23 > 0
+    ? `CONTRAINTE FORTE : il y a ${nbQ23} tâche(s) Q2/Q3 disponibles — inclure au minimum ${Math.max(1, Math.ceil((nbQ1 + nbQ23) * 0.3))} (≥ 30% du total). Ne jamais retourner un planning composé uniquement de Q1.`
+    : ''
+
   const listeTaches = tachesActives.map(t => {
-    const q    = t.quadrant ? `Q${t.quadrant} – ${QUADRANT_LABELS[t.quadrant]}` : ''
-    const ech  = t.echeance ? `, échéance ${t.echeance}` : ''
-    const org  = t.organisme ? `, ${t.organisme}` : ''
-    return `- id="${t.tacheId}" [${q}] "${t.titreTache}" (${t.titreDossier}${org}) — ~${t.dureeMin} min${ech}`
+    const q   = t.quadrant ? `Q${t.quadrant} – ${QUADRANT_LABELS[t.quadrant]}` : ''
+    const ech = t.echeance  ? `, échéance ${t.echeance}` : ''
+    const org = t.organisme ? `, ${t.organisme}` : ''
+    const dureeTag = hits.find(h => h.tacheId === t.tacheId)
+      ? `${t.dureeMin} min (cache)`
+      : misses.find(m => m.id === t.tacheId)
+        ? `${t.dureeMin} min (à estimer)`
+        : `${t.dureeMin} min`
+    return `- id="${t.tacheId}" [${q}] "${t.titreTache}" (${t.titreDossier}${org}) — ~${dureeTag}${ech}`
   }).join('\n')
 
   const listeRoutines = routinesSelectionnees.length
@@ -317,14 +365,14 @@ export async function planifierOptimal({ tachesActives, routinesSelectionnees, h
       ).join('\n')
     : ''
 
-  // Calcul du quota Q2/Q3 minimum à mentionner dans le prompt
-  const nbQ1 = tachesActives.filter(t => t.quadrant === 1).length
-  const nbQ23 = tachesActives.filter(t => t.quadrant === 2 || t.quadrant === 3).length
-  const quotaMsg = nbQ23 > 0
-    ? `CONTRAINTE FORTE : il y a ${nbQ23} tâche(s) Q2/Q3 disponibles — le planning doit en inclure au minimum ${Math.max(1, Math.ceil((nbQ1 + nbQ23) * 0.3))} (soit ≥ 30% du total). Ne jamais retourner un planning composé uniquement de Q1.`
+  const instructionDurees = besoinEstimation
+    ? `\nPour les tâches marquées "(à estimer)", affine la durée en minutes avant de construire le planning.
+Règles d'estimation : appel = 15-30 min, lettre/rédaction = 45-90 min, formulaire simple = 20-30 min, déclaration complexe = 90-120 min, scanner/payer = 10-15 min, rendez-vous = 60 min.
+Retourne la durée affinée dans le champ "dureeMin" de chaque tâche concernée.`
     : ''
 
-  const system = `Tu es une secrétaire de direction experte en gestion du temps et organisation administrative suisse.
+  const system = `Tu es une secrétaire de direction experte en gestion du temps et organisation administrative suisse.${instructionDurees}
+
 Construis le planning optimal de la journée selon ces règles :
 1. Priorité aux tâches Q1 (urgent & important) et aux échéances imminentes
 2. Alterner impérativement les quadrants : si des tâches Q2 ou Q3 existent, les intercaler régulièrement entre les Q1 — ne jamais enchaîner plus de 2 tâches Q1 de suite
@@ -352,7 +400,23 @@ ${listeTaches || '(aucune tâche)'}${listeRoutines}`
   const raw    = await callClaude(system, userMsg, { maxTokens: 1800, temperature: 0.2 })
   const parsed = parseJSON(raw)
   if (!Array.isArray(parsed.taches)) throw new Error('Réponse IA invalide — taches manquantes')
-  return parsed  // { raisonnement, taches }
+
+  // ── Mise en cache des durées estimées par l'IA ────────────────────────────
+  if (besoinEstimation) {
+    enregistrerDurees(
+      misses,
+      parsed.taches
+        .filter(pt => misses.find(m => m.id === pt.tacheId))
+        .map(pt => ({ tacheId: pt.tacheId, dureeMin: pt.dureeMin }))
+    )
+  }
+
+  return parsed  // { raisonnement, taches: [{ tacheId, dureeMin, heureDebut, heureFin }] }
+}
+
+// Gardé pour compatibilité éventuelle — délègue au nouvel appel unifié
+export async function planifierOptimal(params) {
+  return planifierAvecDurees(params)
 }
 
 // ── Explication "pourquoi aujourd'hui" ────────────────────────────────────
