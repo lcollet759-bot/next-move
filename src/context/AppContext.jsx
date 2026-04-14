@@ -1,7 +1,7 @@
 import { createContext, useContext, useReducer, useEffect, useCallback } from 'react'
 import { v4 as uuid } from 'uuid'
 import * as db from '../services/db'
-import { setReminder, removeReminder, checkReminders, requestPermission } from '../services/notifications'
+import { setReminder, removeReminder, checkReminders, requestPermission, checkWeeklyReview, notifyEscalade } from '../services/notifications'
 
 const AppContext = createContext(null)
 
@@ -86,6 +86,7 @@ function recalculerPriorites(dossiers) {
 // Règles :
 //  - Échéance dépassée + actionnable/surveille → bloqué
 //  - En attente externe depuis ≥ 15 jours      → actionnable + "Relancer ?"
+//  - Q4 (ni urgent ni important) inactif ≥ 15j → importance=true (escalade)
 function evoluerStatuts(dossiers) {
   const today = new Date(); today.setHours(0, 0, 0, 0)
   const updates = []
@@ -111,6 +112,15 @@ function evoluerStatuts(dossiers) {
       if (daysSince >= 15) {
         changes.etat             = 'actionnable'
         changes.raisonAujourdhui = 'Relancer ?'
+      }
+    }
+
+    // Q4 inactif ≥ 15 jours : escalade → devient Important
+    if (d.quadrant === 4 && ['actionnable', 'surveille'].includes(d.etat)) {
+      const daysSince = Math.floor((today - new Date(d.updatedAt)) / 86_400_000)
+      if (daysSince >= 15) {
+        changes.importance = true
+        changes._escalade  = true   // flag interne : déclenche notifyEscalade dans load()
       }
     }
 
@@ -221,7 +231,8 @@ export function AppProvider({ children }) {
             const prioU   = prioMap.get(uid)   || {}
             const statutU = statutMap.get(uid) || {}
             // Les changements de statut ont la priorité sur l'Eisenhower
-            const merged  = { ...prioU, ...statutU }
+            const { _escalade, ...statutUClean } = statutU
+            const merged  = { ...prioU, ...statutUClean }
 
             const urgence    = merged.urgence    ?? dossier.urgence
             const importance = merged.importance ?? dossier.importance
@@ -251,6 +262,20 @@ export function AppProvider({ children }) {
               ops.push(db.addJournalEntry(entry))
             }
 
+            // Journaliser et notifier l'escalade Q4 → Important
+            if (_escalade) {
+              const entry = {
+                id:        uuid(),
+                dossierId: uid,
+                action:    'Escalade automatique',
+                detail:    'Q4 inactif ≥ 15 jours → Important',
+                timestamp: now
+              }
+              newJournalEntries.push(entry)
+              ops.push(db.addJournalEntry(entry))
+              notifyEscalade(dossier.titre)
+            }
+
             return Promise.all(ops)
           }))
 
@@ -264,6 +289,7 @@ export function AppProvider({ children }) {
 
       dossiers.sort((a, b) => b.createdAt.localeCompare(a.createdAt))
       dispatch({ type: 'LOADED', dossiers, journal })
+      checkWeeklyReview(dossiers)
     }
     load()
     requestPermission()

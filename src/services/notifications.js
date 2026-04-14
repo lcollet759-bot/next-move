@@ -1,4 +1,49 @@
 const REMINDERS_KEY = 'next-move-reminders'
+const WEEKLY_KEY    = 'nm-weekly-notif'
+
+// ── Revue hebdomadaire (lundi matin) ──────────────────────────────────────────
+// Envoie une notification listant les dossiers Q4 si c'est lundi
+// et qu'on n'a pas encore notifié cette semaine ISO.
+export function checkWeeklyReview(dossiers) {
+  if (!('Notification' in window) || Notification.permission !== 'granted') return
+
+  const now = new Date()
+  if (now.getDay() !== 1) return                        // 0=dim, 1=lun, …
+
+  const weekKey = isoWeekKey(now)
+  if (localStorage.getItem(WEEKLY_KEY) === weekKey) return  // déjà envoyé
+
+  const q4 = dossiers.filter(d => d.quadrant === 4 && d.etat !== 'clos')
+  if (q4.length === 0) return
+
+  const lines = q4.slice(0, 3).map(d => `· ${d.titre}`).join('\n')
+  const more  = q4.length > 3 ? `\n+ ${q4.length - 3} autre${q4.length - 3 > 1 ? 's' : ''}` : ''
+
+  notify(
+    `${q4.length} dossier${q4.length > 1 ? 's' : ''} en attente de décision`,
+    `${lines}${more}\nTraiter, planifier ou supprimer ?`
+  )
+
+  localStorage.setItem(WEEKLY_KEY, weekKey)
+}
+
+// ── Escalade Q4 → Important ───────────────────────────────────────────────────
+export function notifyEscalade(titre) {
+  notify(
+    'Dossier devenu prioritaire',
+    `"${titre}" attend depuis 15 jours — il devient important.`
+  )
+}
+
+// Calcule la clé de semaine ISO (ex : "2026-W15") pour un Date donné.
+function isoWeekKey(date) {
+  const d   = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()))
+  const day = d.getUTCDay() || 7
+  d.setUTCDate(d.getUTCDate() + 4 - day)
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1))
+  const week      = Math.ceil(((d - yearStart) / 86_400_000 + 1) / 7)
+  return `${d.getUTCFullYear()}-W${String(week).padStart(2, '0')}`
+}
 
 export async function requestPermission() {
   if (!('Notification' in window)) return 'unsupported'
