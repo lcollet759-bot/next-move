@@ -371,20 +371,19 @@ Règles d'estimation : appel = 15-30 min, lettre/rédaction = 45-90 min, formula
 Retourne la durée affinée dans le champ "dureeMin" de chaque tâche concernée.`
     : ''
 
-  const system = `Tu es une secrétaire de direction experte en gestion du temps et organisation administrative suisse.${instructionDurees}
-
-Construis le planning optimal de la journée selon ces règles :
-1. Priorité aux tâches Q1 (urgent & important) et aux échéances imminentes
-2. Alterner impérativement les quadrants : si des tâches Q2 ou Q3 existent, les intercaler régulièrement entre les Q1 — ne jamais enchaîner plus de 2 tâches Q1 de suite
-3. Placer les routines aux moments les plus appropriés (ex : emails en début de journée)
-4. Prévoir 10 min de pause entre chaque tâche
-5. Ne pas dépasser l'heure de fin
-6. Si le temps manque, retirer des Q4 en priorité, puis des Q3, avant de retirer des Q2
-${quotaMsg ? `\n${quotaMsg}` : ''}
-
+  const system = `Tu es une secrétaire de direction experte en gestion du temps et organisation administrative suisse, avec 25 ans d'expérience. L'utilisateur est un entrepreneur indépendant qui gère plusieurs projets simultanément.${instructionDurees}
+Construis le planning optimal de la journée selon ces règles dans cet ordre de priorité :
+1. ÉNERGIE : planifier les tâches de réflexion et rédaction complexe en début de plage horaire (cerveau frais), les appels et contacts humains en milieu de plage, les tâches mécaniques et administratives simples en fin de plage quand la fatigue arrive.
+2. BLOCS DE PROJET : regrouper toutes les tâches d'un même projet en bloc continu de minimum 90 minutes avant de passer au projet suivant. Ne jamais fragmenter un projet. L'ordre des projets suit Eisenhower.
+3. SÉQUENCES LOGIQUES : au sein d'un bloc projet, ordonner les tâches dans l'ordre logique de dépendance — ce qui prépare vient avant.
+4. TRANSITIONS : les tâches courtes et indépendantes (appels, emails, routines) peuvent être placées entre deux blocs comme respiration.
+5. CONTRAINTES HORAIRES STRICTES : appels téléphoniques, contacts humains et rendez-vous uniquement entre 08h00 et 18h00. Rédaction, comptabilité, réflexion peuvent être planifiés à toute heure.
+6. QUADRANTS : priorité Q1 d'abord, puis Q2. Maximum 2 blocs Q1 consécutifs — intercaler un bloc Q2. Si le temps manque : retirer Q4 en premier, puis Q3, jamais Q1 ou Q2.
+7. PAUSES : 10 minutes entre chaque bloc.
+8. Ne pas dépasser l'heure de fin.
 Retourne UNIQUEMENT un objet JSON valide :
 {
-  "raisonnement": "2-3 phrases concises expliquant les choix clés",
+  "raisonnement": "2-3 phrases expliquant les choix clés",
   "taches": [
     { "tacheId": "...", "dureeMin": 45, "heureDebut": "09:00", "heureFin": "09:45" }
   ]
