@@ -229,3 +229,56 @@ export async function savePlanning(planning) {
     .upsert(toPlanningRow(planning), { onConflict: 'id' })
   raise(error, 'savePlanning')
 }
+
+// ── Routines ──────────────────────────────────────────────────────────────────
+
+function toRoutineRow(r) {
+  return {
+    id:            r.id,
+    titre:         r.titre,
+    duree_minutes: r.dureeMin,
+    recurrence:    r.recurrence,
+    jour_semaine:  r.jourSemaine ?? null,
+    jour_mois:     r.jourMois    ?? null,
+    actif:         r.actif       ?? true,
+    created_at:    r.createdAt,
+  }
+}
+
+function fromRoutineRow(r) {
+  return {
+    id:          r.id,
+    titre:       r.titre,
+    dureeMin:    r.duree_minutes,
+    recurrence:  r.recurrence,
+    jourSemaine: r.jour_semaine,
+    jourMois:    r.jour_mois,
+    actif:       r.actif,
+    createdAt:   r.created_at,
+  }
+}
+
+export async function getRoutines() {
+  const { data, error } = await supabase
+    .from('routines')
+    .select('*')
+    .eq('actif', true)
+    .order('created_at', { ascending: true })
+  raise(error, 'getRoutines')
+  return (data ?? []).map(fromRoutineRow)
+}
+
+export async function saveRoutine(routine) {
+  const { error } = await supabase
+    .from('routines')
+    .upsert(toRoutineRow(routine), { onConflict: 'id' })
+  raise(error, 'saveRoutine')
+}
+
+export async function deleteRoutine(id) {
+  const { error } = await supabase
+    .from('routines')
+    .delete()
+    .eq('id', id)
+  raise(error, 'deleteRoutine')
+}

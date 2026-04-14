@@ -288,6 +288,65 @@ Retourne UNIQUEMENT un objet JSON : {"durees":[{"tacheId":"...","dureeMin":30},.
   return Array.isArray(parsed.durees) ? parsed.durees : []
 }
 
+// ── Planning optimal IA ────────────────────────────────────────────────────
+// tachesActives : [{ tacheId, titreTache, titreDossier, organisme, quadrant, echeance, dureeMin }]
+// routinesSelectionnees : [{ id, titre, dureeMin }]
+// Retourne : { raisonnement: string, taches: [{ tacheId, dureeMin, heureDebut, heureFin }] }
+export async function planifierOptimal({ tachesActives, routinesSelectionnees, heuresTotales, heureDepart }) {
+  if (!tachesActives.length && !routinesSelectionnees.length) return null
+
+  const [hD, mD] = (heureDepart || '09:00').split(':').map(Number)
+  const endMin   = hD * 60 + mD + Math.round(heuresTotales * 60)
+  const heuresFin = `${String(Math.floor(endMin / 60)).padStart(2, '0')}:${String(endMin % 60).padStart(2, '0')}`
+
+  const QUADRANT_LABELS = {
+    1: 'urgent & important', 2: 'important non urgent',
+    3: 'urgent non important', 4: 'ni urgent ni important'
+  }
+
+  const listeTaches = tachesActives.map(t => {
+    const q    = t.quadrant ? `Q${t.quadrant} – ${QUADRANT_LABELS[t.quadrant]}` : ''
+    const ech  = t.echeance ? `, échéance ${t.echeance}` : ''
+    const org  = t.organisme ? `, ${t.organisme}` : ''
+    return `- id="${t.tacheId}" [${q}] "${t.titreTache}" (${t.titreDossier}${org}) — ~${t.dureeMin} min${ech}`
+  }).join('\n')
+
+  const listeRoutines = routinesSelectionnees.length
+    ? '\n\nRoutines à intégrer :\n' + routinesSelectionnees.map(r =>
+        `- id="routine-${r.id}" "${r.titre}" — ${r.dureeMin} min`
+      ).join('\n')
+    : ''
+
+  const system = `Tu es une secrétaire de direction experte en gestion du temps et organisation administrative suisse.
+Construis le planning optimal de la journée selon ces règles :
+1. Priorité aux tâches Q1 (urgent & important) et aux échéances imminentes
+2. Alterner urgences et important non urgent — ne pas enchaîner uniquement des Q1
+3. Placer les routines aux moments les plus appropriés (ex : emails en début de journée)
+4. Prévoir 10 min de pause entre chaque tâche
+5. Ne pas dépasser l'heure de fin
+6. Exclure les Q4 si le temps manque
+
+Retourne UNIQUEMENT un objet JSON valide :
+{
+  "raisonnement": "2-3 phrases concises expliquant les choix clés",
+  "taches": [
+    { "tacheId": "...", "dureeMin": 45, "heureDebut": "09:00", "heureFin": "09:45" }
+  ]
+}`
+
+  const userMsg = `Date du jour : ${todayISO()}
+Heure de départ : ${heureDepart || '09:00'}
+Heure de fin : ${heuresFin} (${heuresTotales}h disponibles)
+
+Tâches disponibles :
+${listeTaches || '(aucune tâche)'}${listeRoutines}`
+
+  const raw    = await callClaude(system, userMsg, { maxTokens: 1800, temperature: 0.2 })
+  const parsed = parseJSON(raw)
+  if (!Array.isArray(parsed.taches)) throw new Error('Réponse IA invalide — taches manquantes')
+  return parsed  // { raisonnement, taches }
+}
+
 // ── Explication "pourquoi aujourd'hui" ────────────────────────────────────
 export async function genererRaison(dossier) {
   if (!getApiKey()) return ''
