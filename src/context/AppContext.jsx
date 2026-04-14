@@ -1,7 +1,7 @@
 import { createContext, useContext, useReducer, useEffect, useCallback } from 'react'
 import { v4 as uuid } from 'uuid'
 import * as db from '../services/db'
-import { setReminder, removeReminder, checkReminders, requestPermission, checkWeeklyReview, notifyEscalade } from '../services/notifications'
+import { setReminder, removeReminder, checkReminders, requestPermission, notifyEscalade } from '../services/notifications'
 
 const AppContext = createContext(null)
 
@@ -289,7 +289,6 @@ export function AppProvider({ children }) {
 
       dossiers.sort((a, b) => b.createdAt.localeCompare(a.createdAt))
       dispatch({ type: 'LOADED', dossiers, journal })
-      checkWeeklyReview(dossiers)
     }
     load()
     requestPermission()

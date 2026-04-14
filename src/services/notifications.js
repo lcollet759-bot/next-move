@@ -1,30 +1,18 @@
 const REMINDERS_KEY = 'next-move-reminders'
 const WEEKLY_KEY    = 'nm-weekly-notif'
 
-// ── Revue hebdomadaire (lundi matin) ──────────────────────────────────────────
-// Envoie une notification listant les dossiers Q4 si c'est lundi
-// et qu'on n'a pas encore notifié cette semaine ISO.
-export function checkWeeklyReview(dossiers) {
-  if (!('Notification' in window) || Notification.permission !== 'granted') return
+// ── Revue hebdomadaire — helpers pour le modal in-app ─────────────────────────
 
+// Retourne true si c'est lundi ET que le modal n'a pas encore été affiché cette semaine.
+export function shouldShowWeeklyReview() {
   const now = new Date()
-  if (now.getDay() !== 1) return                        // 0=dim, 1=lun, …
+  if (now.getDay() !== 1) return false          // 0=dim, 1=lun, …
+  return localStorage.getItem(WEEKLY_KEY) !== isoWeekKey(now)
+}
 
-  const weekKey = isoWeekKey(now)
-  if (localStorage.getItem(WEEKLY_KEY) === weekKey) return  // déjà envoyé
-
-  const q4 = dossiers.filter(d => d.quadrant === 4 && d.etat !== 'clos')
-  if (q4.length === 0) return
-
-  const lines = q4.slice(0, 3).map(d => `· ${d.titre}`).join('\n')
-  const more  = q4.length > 3 ? `\n+ ${q4.length - 3} autre${q4.length - 3 > 1 ? 's' : ''}` : ''
-
-  notify(
-    `${q4.length} dossier${q4.length > 1 ? 's' : ''} en attente de décision`,
-    `${lines}${more}\nTraiter, planifier ou supprimer ?`
-  )
-
-  localStorage.setItem(WEEKLY_KEY, weekKey)
+// Marque la revue de cette semaine comme affichée.
+export function markWeeklyReviewShown() {
+  localStorage.setItem(WEEKLY_KEY, isoWeekKey(new Date()))
 }
 
 // ── Escalade Q4 → Important ───────────────────────────────────────────────────
