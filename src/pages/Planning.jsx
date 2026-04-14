@@ -765,8 +765,8 @@ export default function Planning() {
             </div>
           </div>
 
-          {/* Liste des blocs proposés — padding-bottom pour dégager la barre fixe */}
-          <div className="plan-timeline" style={{ padding: '0 16px 200px' }}>
+          {/* Liste des blocs proposés */}
+          <div className="plan-timeline" style={{ padding: '0 16px' }}>
             {propDraft.map(tp => (
               <BlocTache key={tp.tacheId} tp={tp} isFirst={false}
                 editingId={editingId} dureeDraft={dureeDraft}
@@ -775,7 +775,7 @@ export default function Planning() {
             ))}
           </div>
 
-          {/* Barre d'actions fixe en bas */}
+          {/* Barre d'actions — dans le flux normal, en dernier élément scrollable */}
           <div className="validation-actions">
             <button className="btn btn-ghost" style={{ flex: 1 }}
               onClick={handleRecalculer} disabled={generating}>
@@ -785,7 +785,8 @@ export default function Planning() {
               }
             </button>
             <button className="btn btn-primary" style={{ flex: 2 }}
-              onClick={handleConfirmer} disabled={generating}>
+              onClick={() => { console.log('[Planning] Confirmer tappé'); handleConfirmer() }}
+              disabled={generating}>
               Confirmer ce planning
             </button>
           </div>
@@ -881,16 +882,22 @@ export default function Planning() {
         .routine-duree { font-size: 12px; color: var(--text-muted); flex-shrink: 0; }
 
         /* ── Écran validation ──────────────────────────────────────────── */
+        /*
+         * PAS de transform sur cet élément : un transform crée un containing block
+         * pour les position:fixed enfants et casse leur positionnement.
+         * On utilise une animation opacity-only pour éviter ce piège CSS.
+         */
         .validation-screen {
           position: fixed; inset: 0;
           background: var(--bg, #F9F8F5);
           z-index: 100; overflow-y: auto;
+          display: flex; flex-direction: column;
           animation: valFadeIn 0.2s ease forwards;
         }
-        @keyframes valFadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes valFadeIn { from { opacity: 0; } to { opacity: 1; } }
         .validation-header {
           display: flex; align-items: center; gap: 10px;
-          padding: 16px 16px 4px;
+          padding: 16px 16px 4px; flex-shrink: 0;
         }
         .validation-back {
           display: inline-flex; align-items: center; gap: 4px;
@@ -903,15 +910,16 @@ export default function Planning() {
           font-size: 15px; font-weight: 600; color: var(--text);
         }
         .validation-banner {
-          margin: 12px 16px; padding: 14px 16px;
+          margin: 12px 16px; padding: 14px 16px; flex-shrink: 0;
           background: var(--green-light); border: 1px solid var(--green);
           border-radius: var(--radius);
         }
+        /* Barre d'actions dans le flux normal — jamais position:fixed */
         .validation-actions {
-          position: fixed; bottom: 0; left: 0; right: 0;
-          padding: 12px 16px calc(env(safe-area-inset-bottom, 0px) + 16px);
+          margin-top: 16px; flex-shrink: 0;
+          padding: 12px 16px calc(env(safe-area-inset-bottom, 0px) + 20px);
           background: var(--surface); border-top: 1px solid var(--border);
-          display: flex; gap: 10px; z-index: 101;
+          display: flex; gap: 10px;
         }
 
         ${skeletonCSS}
