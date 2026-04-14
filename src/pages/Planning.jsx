@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { v4 as uuid } from 'uuid'
 import { useApp } from '../context/AppContext'
+import DossierSheet from '../components/DossierSheet'
 import {
   getPlanningForDate, savePlanning,
   getRoutines, saveRoutine, deleteRoutine,
@@ -244,15 +245,38 @@ function ModalAddRoutine({ onSave, onClose }) {
 }
 
 // ── Bloc tâche ────────────────────────────────────────────────────────────────
-function BlocTache({ tp, isFirst, editingId, dureeDraft, onEditStart, onDraftChange, onEditSave, onDemarrer }) {
-  const style  = tp.isRoutine ? ROUTINE_STYLE : (Q_STYLE[tp.quadrant] || Q_STYLE[4])
-  const isDone = tp.done
+function BlocTache({ tp, isFirst, editingId, dureeDraft, onEditStart, onDraftChange, onEditSave, onDemarrer, onCheck, onOpenSheet }) {
+  const style    = tp.isRoutine ? ROUTINE_STYLE : (Q_STYLE[tp.quadrant] || Q_STYLE[4])
+  const isDone   = tp.done
+  const canSheet = !!onOpenSheet && !tp.isRoutine && !!tp.dossierId
+
+  const handleBlocClick = () => {
+    if (canSheet) onOpenSheet(tp.dossierId)
+  }
 
   return (
-    <div className={`bloc-tache${isDone ? ' bloc-done' : ''}${tp.horsPlanning ? ' bloc-hors' : ''}`}
-      style={{ background: isDone ? 'var(--gray-light)' : style.bg, borderColor: isDone ? 'var(--border)' : style.accent }}>
-
+    <div
+      className={`bloc-tache${isDone ? ' bloc-done' : ''}${tp.horsPlanning ? ' bloc-hors' : ''}${canSheet ? ' bloc-tappable' : ''}`}
+      style={{ background: isDone ? 'var(--gray-light)' : style.bg, borderColor: isDone ? 'var(--border)' : style.accent }}
+      onClick={handleBlocClick}
+    >
       <div className="bloc-header">
+        {/* Case à cocher */}
+        {onCheck && (
+          <button
+            className={`bloc-check${isDone ? ' bloc-check-on' : ''}`}
+            style={{ borderColor: isDone ? 'var(--green)' : style.accent }}
+            onClick={e => { e.stopPropagation(); onCheck(tp.tacheId, tp.dossierId, tp.isRoutine) }}
+            aria-label={isDone ? 'Marquer comme non fait' : 'Marquer comme fait'}
+          >
+            {isDone && (
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="20 6 9 17 4 12"/>
+              </svg>
+            )}
+          </button>
+        )}
+
         <span className="bloc-horaire" style={{ color: isDone ? 'var(--text-muted)' : style.accent }}>
           {tp.heureDebut} – {tp.heureFin}
         </span>
@@ -262,10 +286,12 @@ function BlocTache({ tp, isFirst, editingId, dureeDraft, onEditStart, onDraftCha
             onChange={e => onDraftChange(e.target.value)}
             onBlur={() => onEditSave(tp.tacheId, dureeDraft)}
             onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); onEditSave(tp.tacheId, dureeDraft) } if (e.key === 'Escape') onEditSave(null) }}
+            onClick={e => e.stopPropagation()}
             autoFocus style={{ color: style.accent }} />
         ) : (
           <button className="bloc-duree-btn" style={{ color: isDone ? 'var(--text-muted)' : style.accent }}
-            onClick={() => !isDone && onEditStart(tp.tacheId, tp.dureeMin)} title={isDone ? undefined : 'Toucher pour ajuster'}>
+            onClick={e => { e.stopPropagation(); !isDone && onEditStart(tp.tacheId, tp.dureeMin) }}
+            title={isDone ? undefined : 'Toucher pour ajuster'}>
             {formatDuree(tp.dureeMin)}{!isDone && <span style={{ fontSize: 10, marginLeft: 2 }}>✎</span>}
           </button>
         )}
@@ -282,10 +308,11 @@ function BlocTache({ tp, isFirst, editingId, dureeDraft, onEditStart, onDraftCha
       </p>
       <p className="bloc-dossier">
         {tp.titreDossier}{tp.organisme && <span style={{ color: 'var(--border)' }}> · {tp.organisme}</span>}
+        {canSheet && !isDone && <span style={{ color: 'var(--border)', fontSize: 11 }}> · voir dossier →</span>}
       </p>
 
       {isFirst && !isDone && (
-        <button className="btn-demarrer" onClick={onDemarrer}>
+        <button className="btn-demarrer" onClick={e => { e.stopPropagation(); onDemarrer() }}>
           <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
           Démarrer
         </button>
@@ -296,7 +323,7 @@ function BlocTache({ tp, isFirst, editingId, dureeDraft, onEditStart, onDraftCha
 
 // ── Page principale ───────────────────────────────────────────────────────────
 export default function Planning() {
-  const { dossiersAujourdhui, apiKey } = useApp()
+  const { dossiersAujourdhui, apiKey, toggleTache } = useApp()
   const navigate = useNavigate()
 
   // ── Données planning ────────────────────────────────────────────────────
@@ -318,6 +345,9 @@ export default function Planning() {
   // ── Routines ────────────────────────────────────────────────────────────
   const [routines,      setRoutines]     = useState([])
   const [showAddR,      setShowAddR]     = useState(false)
+
+  // ── Panneau dossier contextuel ─────────────────────────────────────────
+  const [sheetDossierId, setSheetDossierId] = useState(null)
 
   // ── Édition inline durée ───────────────────────────────────────────────
   const [editingId,     setEditingId]    = useState(null)
@@ -516,6 +546,27 @@ export default function Planning() {
     setPropDraft(recalculerHoraires(updated))
   }
 
+  // ── Cocher une tâche directement depuis le planning ─────────────────────
+  const handleCheckTache = async (tacheId, dossierId, isRoutine) => {
+    const today = todayISO()
+    if (isRoutine) {
+      // Les routines n'ont pas de dossier AppContext — on bascule done directement
+      const updated = planning.tachesPlanifiees.map(t =>
+        t.tacheId === tacheId ? { ...t, done: !t.done } : t
+      )
+      const active  = updated.filter(t => !t.done)
+      const done    = updated.filter(t =>  t.done)
+      const resched = genererCreneaux(active, planning.heuresDisponibles)
+      const np      = { ...planning, tachesPlanifiees: [...resched, ...done] }
+      setPlanning(np)
+      localStorage.setItem(PLANNING_KEY(today), JSON.stringify(np))
+      savePlanning(np).catch(() => {})
+    } else {
+      // Déléguer à AppContext → l'auto-sync useEffect s'occupe de la mise à jour planning
+      await toggleTache(dossierId, tacheId)
+    }
+  }
+
   // ── Routines CRUD ───────────────────────────────────────────────────────
   const handleAddRoutine = async (routine) => {
     setShowAddR(false)
@@ -625,7 +676,9 @@ export default function Planning() {
                 <BlocTache key={tp.tacheId} tp={tp} isFirst={tp.tacheId === premiereId}
                   editingId={editingId} dureeDraft={dureeDraft}
                   onEditStart={handleEditStart} onDraftChange={setDureeDraft} onEditSave={handleEditSave}
-                  onDemarrer={() => navigate('/focus', { state: { planningDate: today } })} />
+                  onDemarrer={() => navigate('/focus', { state: { planningDate: today } })}
+                  onCheck={handleCheckTache}
+                  onOpenSheet={(id) => setSheetDossierId(id)} />
               ))}
             </div>
           )}
@@ -680,6 +733,11 @@ export default function Planning() {
       )}
       {showAddR && <ModalAddRoutine onSave={handleAddRoutine} onClose={() => setShowAddR(false)} />}
 
+      {/* Panneau dossier contextuel */}
+      {sheetDossierId && (
+        <DossierSheet dossierId={sheetDossierId} onClose={() => setSheetDossierId(null)} />
+      )}
+
       {/* ── Écran de validation IA (overlay plein écran) ─────────────── */}
       {step === 'validation' && proposal && (
         <div className="validation-screen">
@@ -708,7 +766,7 @@ export default function Planning() {
           </div>
 
           {/* Liste des blocs proposés — padding-bottom pour dégager la barre fixe */}
-          <div className="plan-timeline" style={{ padding: '0 16px 130px' }}>
+          <div className="plan-timeline" style={{ padding: '0 16px 200px' }}>
             {propDraft.map(tp => (
               <BlocTache key={tp.tacheId} tp={tp} isFirst={false}
                 editingId={editingId} dureeDraft={dureeDraft}
@@ -780,9 +838,19 @@ export default function Planning() {
         .bloc-tache {
           border: 1.5px solid; border-radius: var(--radius); padding: 14px 14px 12px; transition: opacity 0.2s;
         }
+        .bloc-tappable { cursor: pointer; }
+        .bloc-tappable:active { opacity: 0.85; transform: scale(0.99); }
         .bloc-done { opacity: 0.55; }
         .bloc-hors { opacity: 0.7; }
         .bloc-header { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; flex-wrap: wrap; }
+        .bloc-check {
+          width: 22px; height: 22px; border-radius: 50%;
+          border: 2px solid; flex-shrink: 0;
+          display: flex; align-items: center; justify-content: center;
+          background: transparent; cursor: pointer;
+          transition: background 0.15s, border-color 0.15s;
+        }
+        .bloc-check-on { background: var(--green) !important; border-color: var(--green) !important; }
         .bloc-horaire { font-size: 13px; font-weight: 700; letter-spacing: 0.03em; flex-shrink: 0; }
         .bloc-duree-btn {
           font-size: 12px; font-weight: 500; border: none; background: none;
