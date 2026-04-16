@@ -89,81 +89,6 @@ function buildTachesBase(dossiersAujourdhui, routinesSelected) {
   return [...tachesActives, ...tachesRoutines]
 }
 
-// ── Modal : heures disponibles ────────────────────────────────────────────────
-function ModalHeures({ onConfirm }) {
-  const [custom, setCustom] = useState(false)
-  const [val, setVal]       = useState('')
-  return (
-    <div className="overlay">
-      <div className="sheet" onClick={e => e.stopPropagation()}>
-        <h3 style={{ fontSize: 20, fontWeight: 700, marginBottom: 6 }}>Combien d'heures as-tu aujourd'hui ?</h3>
-        <p style={{ fontSize: 14, color: 'var(--text-muted)', marginBottom: 20, lineHeight: 1.5 }}>
-          Je construirai le planning optimal avec l'IA.
-        </p>
-        {!custom ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {[{ h: 2, sub: 'Courte session' }, { h: 4, sub: 'Demi-journée' }, { h: 6, sub: 'Journée complète' }].map(({ h, sub }) => (
-              <button key={h} className="heures-option" onClick={() => onConfirm(h)}>
-                <span className="heures-val">{h}h</span>
-                <span className="heures-sub">{sub}</span>
-              </button>
-            ))}
-            <button className="btn btn-ghost" style={{ marginTop: 4, padding: '13px' }} onClick={() => setCustom(true)}>
-              Autre durée…
-            </button>
-          </div>
-        ) : (
-          <div>
-            <p style={{ fontSize: 14, marginBottom: 8 }}>Durée disponible (heures) :</p>
-            <input type="number" min="0.5" max="12" step="0.5" className="input" value={val}
-              onChange={e => setVal(e.target.value)} placeholder="ex : 3" autoFocus style={{ marginBottom: 12 }} />
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button className="btn btn-ghost btn-sm" style={{ flex: 1 }} onClick={() => setCustom(false)}>← Retour</button>
-              <button className="btn btn-primary" style={{ flex: 2 }}
-                onClick={() => onConfirm(parseFloat(val) || 4)} disabled={!val || parseFloat(val) <= 0}>
-                Continuer →
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
-
-// ── Modal : routines du jour ──────────────────────────────────────────────────
-function ModalRoutines({ routinesToday, selected, onToggle, onConfirm }) {
-  return (
-    <div className="overlay">
-      <div className="sheet" onClick={e => e.stopPropagation()}>
-        <h3 style={{ fontSize: 20, fontWeight: 700, marginBottom: 6 }}>Tes routines d'aujourd'hui</h3>
-        <p style={{ fontSize: 14, color: 'var(--text-muted)', marginBottom: 16, lineHeight: 1.5 }}>
-          Coche celles à intégrer dans le planning IA.
-        </p>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 20 }}>
-          {routinesToday.map(r => (
-            <div key={r.id} className="routine-check-row" onClick={() => onToggle(r.id)}>
-              <div className={`routine-checkbox${selected.includes(r.id) ? ' routine-checkbox-on' : ''}`}>
-                {selected.includes(r.id) && '✓'}
-              </div>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 14, fontWeight: 500 }}>{r.titre}</div>
-                <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{formatDuree(r.dureeMin)}</div>
-              </div>
-            </div>
-          ))}
-        </div>
-        <button className="btn btn-primary btn-full" onClick={() => onConfirm(selected)}>
-          Générer le planning
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" style={{ marginLeft: 6 }}>
-            <polygon points="5 3 19 12 5 21 5 3"/>
-          </svg>
-        </button>
-      </div>
-    </div>
-  )
-}
-
 // ── Modal : ajouter une routine ───────────────────────────────────────────────
 function ModalAddRoutine({ onSave, onClose }) {
   const [titre,       setTitre]       = useState('')
@@ -348,6 +273,11 @@ export default function Planning({ forceStep }) {
   const [routines,      setRoutines]     = useState([])
   const [showAddR,      setShowAddR]     = useState(false)
 
+  // ── Ajout rapide inline (écran routines) ─────────────────────────────────
+  const [newRoutineTitre, setNewRoutineTitre] = useState('')
+  const [newRoutineDuree, setNewRoutineDuree] = useState('30')
+  const [newRoutineRec,   setNewRoutineRec]   = useState('daily')
+
   // ── Panneau dossier contextuel ─────────────────────────────────────────
   const [sheetDossierId, setSheetDossierId] = useState(null)
 
@@ -365,23 +295,38 @@ export default function Planning({ forceStep }) {
       if (cached) setRoutines(JSON.parse(cached))
     } catch {}
 
-    if (forceStep) {
-      // Entrée directe depuis un point d'appel externe (ex : Aujourd'hui) :
-      // afficher la modal demandée immédiatement, sans charger le planning existant.
-      setStep(forceStep)
-      // Rafraîchir les routines depuis le serveur en arrière-plan
+    const h = location.state?.heures
+    if (forceStep === 'heures' || h) {
+      // Entrée directe depuis Aujourd'hui avec heures déjà choisies
       getRoutines()
-        .then(fresh => { setRoutines(fresh); localStorage.setItem(ROUTINES_KEY, JSON.stringify(fresh)) })
-        .catch(() => {})
+        .then(fresh => {
+          const hrs = h || 4
+          setRoutines(fresh)
+          localStorage.setItem(ROUTINES_KEY, JSON.stringify(fresh))
+          setHeuresPick(hrs)
+          const todayR = routinesDuJour(fresh)
+          if (todayR.length > 0) {
+            setSelectedRIds(todayR.map(r => r.id))
+            setStep('routines')
+          } else {
+            lancerGeneration(hrs, [])
+          }
+        })
+        .catch(() => {
+          const hrs = h || 4
+          setHeuresPick(hrs)
+          lancerGeneration(hrs, [])
+        })
       return
     }
 
     // Chargement normal (accès via route /planning)
     async function load() {
+      let freshRoutines = []
       try {
-        const fresh = await getRoutines()
-        setRoutines(fresh)
-        localStorage.setItem(ROUTINES_KEY, JSON.stringify(fresh))
+        freshRoutines = await getRoutines()
+        setRoutines(freshRoutines)
+        localStorage.setItem(ROUTINES_KEY, JSON.stringify(freshRoutines))
       } catch {}
 
       const today  = todayISO()
@@ -394,8 +339,30 @@ export default function Planning({ forceStep }) {
         if (p) {
           setPlanning(p)
           localStorage.setItem(PLANNING_KEY(today), JSON.stringify(p))
-        } else { setStep('heures') }
-      } catch { setStep('heures') }
+        } else {
+          const hrs = location.state?.heures
+          if (hrs) {
+            setHeuresPick(hrs)
+            const todayR = routinesDuJour(freshRoutines)
+            if (todayR.length > 0) {
+              setSelectedRIds(todayR.map(r => r.id))
+              setStep('routines')
+            } else {
+              lancerGeneration(hrs, [])
+            }
+          } else {
+            setStep('heures')
+          }
+        }
+      } catch {
+        const hrs = location.state?.heures
+        if (hrs) {
+          setHeuresPick(hrs)
+          lancerGeneration(hrs, [])
+        } else {
+          setStep('heures')
+        }
+      }
       finally { setLoading(false) }
     }
     load()
@@ -583,6 +550,25 @@ export default function Planning({ forceStep }) {
     await deleteRoutine(id)
   }
 
+  const handleAddRoutineInline = async () => {
+    if (!newRoutineTitre.trim()) return
+    const routine = {
+      id:          uuid(),
+      titre:       newRoutineTitre.trim(),
+      dureeMin:    parseInt(newRoutineDuree) || 30,
+      recurrence:  newRoutineRec,
+      jourSemaine: newRoutineRec === 'weekly'  ? new Date().getDay() : null,
+      jourMois:    newRoutineRec === 'monthly' ? new Date().getDate() : null,
+      actif:       true,
+      createdAt:   new Date().toISOString(),
+    }
+    await handleAddRoutine(routine)
+    setNewRoutineTitre('')
+    setNewRoutineDuree('30')
+    setNewRoutineRec('daily')
+    setSelectedRIds(prev => [...prev, routine.id])
+  }
+
   // ── Rendu ────────────────────────────────────────────────────────────────
   const today       = todayISO()
   const tachesActiv = planning?.tachesPlanifiees.filter(t => !t.done) ?? []
@@ -734,14 +720,87 @@ export default function Planning({ forceStep }) {
       )}
 
       {/* ── Modaux ─────────────────────────────────────────────────────── */}
-      {step === 'heures'   && <ModalHeures onConfirm={handleHeures} />}
+      {step === 'heures' && (
+        <div className="section" style={{ marginTop: 8 }}>
+          <div className="morning-card" style={{ flexDirection: 'column', gap: 12, alignItems: 'flex-start' }}>
+            <p style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>Combien d'heures as-tu aujourd'hui ?</p>
+            <div style={{ display: 'flex', gap: 8, width: '100%' }}>
+              {[{ h: 2, sub: '2h' }, { h: 4, sub: '4h' }, { h: 6, sub: '6h' }].map(({ h, sub }) => (
+                <button key={h} className="heures-option" onClick={() => handleHeures(h)}
+                  style={{ flex: 1, padding: '10px 8px', textAlign: 'center' }}>
+                  <span className="heures-val">{sub}</span>
+                </button>
+              ))}
+            </div>
+            <button className="btn btn-ghost btn-sm btn-full" onClick={() => handleHeures(4)}>
+              Autre durée (4h par défaut) →
+            </button>
+          </div>
+        </div>
+      )}
       {step === 'routines' && (
-        <ModalRoutines
-          routinesToday={routinesDuJour(routines)}
-          selected={selectedRIds}
-          onToggle={id => setSelectedRIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])}
-          onConfirm={handleRoutinesConfirm}
-        />
+        <div className="routines-screen">
+          <div className="validation-header">
+            <button className="validation-back" onClick={() => setStep(null)}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="15 18 9 12 15 6"/>
+              </svg>
+              Retour
+            </button>
+            <span className="validation-title">Routines d'aujourd'hui</span>
+          </div>
+
+          <div className="section">
+            <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 12, lineHeight: 1.5 }}>
+              Coche les routines à intégrer dans ton planning.
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
+              {routinesDuJour(routines).map(r => (
+                <div key={r.id} className="routine-check-row"
+                  onClick={() => setSelectedRIds(prev => prev.includes(r.id) ? prev.filter(x => x !== r.id) : [...prev, r.id])}>
+                  <div className={`routine-checkbox${selectedRIds.includes(r.id) ? ' routine-checkbox-on' : ''}`}>
+                    {selectedRIds.includes(r.id) && '✓'}
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 14, fontWeight: 500 }}>{r.titre}</div>
+                    <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{formatDuree(r.dureeMin)}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Ajout rapide d'une routine */}
+            <div className="add-routine-inline">
+              <p className="label">+ Nouvelle routine</p>
+              <input className="input" placeholder="Titre (ex : Méditation)" value={newRoutineTitre}
+                onChange={e => setNewRoutineTitre(e.target.value)} style={{ marginBottom: 8 }} />
+              <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                <input className="input" type="number" min="5" max="480" placeholder="Durée (min)"
+                  value={newRoutineDuree} onChange={e => setNewRoutineDuree(e.target.value)} style={{ flex: 1 }} />
+                <select className="input" value={newRoutineRec}
+                  onChange={e => setNewRoutineRec(e.target.value)} style={{ flex: 1 }}>
+                  <option value="daily">Quotidienne</option>
+                  <option value="weekly">Hebdomadaire</option>
+                  <option value="monthly">Mensuelle</option>
+                </select>
+              </div>
+              <button className="btn btn-ghost btn-sm btn-full"
+                disabled={!newRoutineTitre.trim()}
+                onClick={handleAddRoutineInline}>
+                Ajouter cette routine
+              </button>
+            </div>
+          </div>
+
+          <div className="validation-actions">
+            <button className="btn btn-primary btn-full" onClick={() => handleRoutinesConfirm(selectedRIds)}>
+              Générer le planning
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" style={{ marginLeft: 6 }}>
+                <polygon points="5 3 19 12 5 21 5 3"/>
+              </svg>
+            </button>
+          </div>
+        </div>
       )}
       {showAddR && <ModalAddRoutine onSave={handleAddRoutine} onClose={() => setShowAddR(false)} />}
 
@@ -950,6 +1009,23 @@ export default function Planning({ forceStep }) {
           padding: 12px 16px calc(env(safe-area-inset-bottom, 0px) + 20px);
           background: var(--surface); border-top: 1px solid var(--border);
           display: flex; gap: 10px;
+        }
+
+        /* Écran routines inline */
+        .routines-screen {
+          position: fixed; inset: 0;
+          background: var(--bg, #F9F8F5);
+          z-index: 100; overflow-y: auto;
+          display: flex; flex-direction: column;
+          animation: valFadeIn 0.2s ease forwards;
+          pointer-events: auto;
+        }
+        .add-routine-inline {
+          background: var(--surface);
+          border: 1px solid var(--border);
+          border-radius: var(--radius);
+          padding: 14px;
+          margin-top: 8px;
         }
 
         ${skeletonCSS}
