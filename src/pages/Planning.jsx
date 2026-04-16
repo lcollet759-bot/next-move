@@ -481,10 +481,15 @@ export default function Planning({ forceStep }) {
 
   // ── Confirmer la proposition ─────────────────────────────────────────────
   const handleConfirmer = async () => {
-    await sauvegarderPlanning(heuresPick, propDraft)
-    setStep(null)
-    setProposal(null)
-    setPropDraft([])
+    console.log('[Confirmer] heuresPick:', heuresPick, 'propDraft:', propDraft, 'length:', propDraft?.length)
+    try {
+      await sauvegarderPlanning(heuresPick, propDraft)
+      setStep(null)
+      setProposal(null)
+      setPropDraft([])
+    } catch (e) {
+      console.error('[Confirmer] erreur:', e)
+    }
   }
 
   // ── Sauvegarde ───────────────────────────────────────────────────────────
