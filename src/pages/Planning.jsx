@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { v4 as uuid } from 'uuid'
 import { useApp } from '../context/AppContext'
 import DossierSheet from '../components/DossierSheet'
@@ -325,6 +325,7 @@ function BlocTache({ tp, isFirst, editingId, dureeDraft, onEditStart, onDraftCha
 export default function Planning({ forceStep }) {
   const { dossiersAujourdhui, apiKey, toggleTache } = useApp()
   const navigate = useNavigate()
+  const location = useLocation()
 
   // ── Données planning ────────────────────────────────────────────────────
   const [planning,     setPlanning]     = useState(null)
@@ -604,8 +605,19 @@ export default function Planning({ forceStep }) {
     </div>
   )
 
+  const showBack = location.key !== 'default' || document.referrer.includes('aujourdhui')
+
   return (
     <div className="page">
+      {/* Bouton retour — visible si navigué depuis une autre page */}
+      {showBack && (
+        <button className="plan-back-btn" onClick={() => navigate(-1)}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="15 18 9 12 15 6"/>
+          </svg>
+          Retour
+        </button>
+      )}
       {/* Header */}
       <div className="page-header plan-header">
         <div>
@@ -794,6 +806,15 @@ export default function Planning({ forceStep }) {
       )}
 
       <style>{`
+        .plan-back-btn {
+          display: inline-flex; align-items: center; gap: 5px;
+          position: sticky; top: 0; z-index: 20;
+          padding: 10px 16px 6px;
+          border: none; background: none; cursor: pointer;
+          font-size: 13px; color: var(--text-muted); font-family: inherit;
+          transition: color 0.15s;
+        }
+        .plan-back-btn:hover { color: var(--text); }
         .plan-header { display: flex; align-items: flex-start; justify-content: space-between; padding-bottom: 16px; }
         .plan-title  { font-size: 28px; font-weight: 700; color: var(--text); letter-spacing: -0.8px; }
         .plan-sub    { font-size: 13px; color: var(--text-muted); margin-top: 4px; }
