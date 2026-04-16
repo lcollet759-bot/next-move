@@ -20,7 +20,7 @@ export default function Login() {
     try {
       const ok = await login(password)
       if (ok) {
-        navigate('/aujourdhui', { replace: true })
+        navigate('/', { replace: true })
       } else {
         setError('Mot de passe incorrect.')
       }
