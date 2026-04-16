@@ -191,10 +191,8 @@ export default function Planning({ forceStep }) {
   const [genError,    setGenError]    = useState(null)
 
   const [step,         setStep]        = useState(null)
-  const [heuresPick,   setHeuresPick]  = useState(4)
+  const [heuresPick,   setHeuresPick]  = useState(null)
   const [selectedRIds, setSelectedRIds]= useState([])
-  const [heuresCustom, setHeuresCustom]= useState(false)
-  const [heuresVal,    setHeuresVal]   = useState('')
 
   const [proposal,  setProposal]  = useState(null)
   const [propDraft, setPropDraft] = useState([])
@@ -506,39 +504,20 @@ export default function Planning({ forceStep }) {
       {step === 'heures' && (
         <div className="pla-body">
           <div className="pla-step-card">
-            <p className="pla-step-title">Combien d'heures as-tu aujourd'hui&nbsp;?</p>
-            <p className="pla-step-sub">Je construirai le planning optimal avec l'IA.</p>
+            <p className="pla-step-title">Combien de temps as-tu&nbsp;?</p>
 
-            {!heuresCustom ? (
-              <div className="pla-heures-grid">
-                {[{h:2,label:'2h',sub:'Courte session'},{h:4,label:'4h',sub:'Demi-journée'},{h:6,label:'6h',sub:'Journée complète'}]
-                  .map(({h,label,sub}) => (
-                    <button key={h} className="pla-heure-btn" onClick={() => handleHeures(h)}>
-                      <span className="pla-heure-val">{label}</span>
-                      <span className="pla-heure-sub">{sub}</span>
-                    </button>
-                  ))}
-                <button className="pla-heure-btn pla-heure-autre" onClick={() => setHeuresCustom(true)}>
-                  <span className="pla-heure-val">Autre</span>
-                  <span className="pla-heure-sub">Durée libre</span>
+            <div className="pla-heures-grid">
+              {[
+                { h: 0.5, label: '30min' },
+                { h: 1,   label: '1h'    },
+                { h: 2,   label: '2h'    },
+                { h: 8,   label: 'Journée' },
+              ].map(({ h, label }) => (
+                <button key={h} className="pla-heure-btn" onClick={() => handleHeures(h)}>
+                  <span className="pla-heure-val">{label}</span>
                 </button>
-              </div>
-            ) : (
-              <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-                <p style={{ fontSize:13, color:'#A09080' }}>Durée disponible (heures) :</p>
-                <input type="number" min="0.5" max="12" step="0.5" className="input"
-                  placeholder="ex : 3" value={heuresVal} onChange={e => setHeuresVal(e.target.value)} autoFocus />
-                <div style={{ display:'flex', gap:8, marginTop:4 }}>
-                  <button className="btn btn-ghost btn-sm" style={{ flex:1 }}
-                    onClick={() => { setHeuresCustom(false); setHeuresVal('') }}>← Retour</button>
-                  <button className="btn btn-primary" style={{ flex:2 }}
-                    disabled={!heuresVal || parseFloat(heuresVal) <= 0}
-                    onClick={() => { handleHeures(parseFloat(heuresVal)); setHeuresCustom(false); setHeuresVal('') }}>
-                    Continuer →
-                  </button>
-                </div>
-              </div>
-            )}
+              ))}
+            </div>
           </div>
         </div>
       )}
@@ -911,17 +890,27 @@ const CSS = `
     margin-bottom: 20px;
     line-height: 1.5;
   }
-  .pla-heures-grid { display:flex; flex-direction:column; gap:10px; }
-  .pla-heure-btn {
-    width:100%; display:flex; align-items:center; justify-content:space-between;
-    padding:14px 16px; border:1.5px solid #DDD8CE; border-radius:10px;
-    background:#F7F5F0; cursor:pointer; font-family:inherit; transition:border-color 0.15s, background 0.15s;
+  .pla-heures-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-top: 4px;
   }
-  .pla-heure-btn:hover  { border-color:#1C3829; background:#E8F0EA; }
-  .pla-heure-btn:active { opacity:0.85; }
-  .pla-heure-autre { opacity:0.7; }
-  .pla-heure-val { font-size:18px; font-weight:700; color:#1C3829; }
-  .pla-heure-sub { font-size:13px; color:#A09080; }
+  .pla-heure-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 22px 12px;
+    border: 1.5px solid #DDD8CE;
+    border-radius: 14px;
+    background: #F7F5F0;
+    cursor: pointer;
+    font-family: inherit;
+    transition: border-color 0.15s, background 0.15s, transform 0.12s;
+  }
+  .pla-heure-btn:hover  { border-color: #1C3829; background: #E8F0EA; }
+  .pla-heure-btn:active { transform: scale(0.96); opacity: 0.9; }
+  .pla-heure-val { font-size: 22px; font-weight: 700; color: #1C3829; }
 
   /* Routines step */
   .pla-routine-check {
