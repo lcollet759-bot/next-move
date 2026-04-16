@@ -114,7 +114,14 @@ export default function TousDossiers() {
         <header className="td-header">
           <div className="td-header-top">
             <h1 className="td-header-title">Dossiers</h1>
-            <span className="td-header-count">…</span>
+            <div className="td-header-actions">
+              <span className="td-header-count">…</span>
+              <button className="td-btn-new" onClick={() => navigate('/capturer')} aria-label="Nouveau dossier">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                  <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+                </svg>
+              </button>
+            </div>
           </div>
           <div className="td-search-wrap">
             <svg className="td-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="2" strokeLinecap="round">
@@ -144,7 +151,14 @@ export default function TousDossiers() {
       <header className="td-header">
         <div className="td-header-top">
           <h1 className="td-header-title">Dossiers</h1>
-          <span className="td-header-count">{counts.tous}</span>
+          <div className="td-header-actions">
+            <span className="td-header-count">{counts.tous}</span>
+            <button className="td-btn-new" onClick={() => navigate('/capturer')} aria-label="Nouveau dossier">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+              </svg>
+            </button>
+          </div>
         </div>
 
         {/* Recherche */}
@@ -253,11 +267,32 @@ const tdCSS = `
     color: #fff;
     letter-spacing: -0.5px;
   }
+  .td-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
   .td-header-count {
     font-size: 13px;
     font-weight: 600;
     color: rgba(255,255,255,0.45);
   }
+  .td-btn-new {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    background: #C4623A;
+    border: none;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: background 0.15s, transform 0.12s;
+    box-shadow: 0 2px 8px rgba(196,98,58,0.4);
+  }
+  .td-btn-new:active { background: #a84e2d; transform: scale(0.93); }
 
   /* ── Recherche ───────────────────────────────────────────────────────── */
   .td-search-wrap {
