@@ -615,12 +615,14 @@ export default function Planning({ forceStep }) {
       {/* Header */}
       <div className="page-header plan-header">
         <div style={{ flex: 1 }}>
-          <button className="plan-back-btn" onClick={() => navigate(-1)}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="15 18 9 12 15 6"/>
-            </svg>
-            Retour
-          </button>
+          {location.state?.from === 'aujourdhui' && (
+            <button className="plan-back-btn" onClick={() => navigate('/aujourdhui', { replace: true })}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="15 18 9 12 15 6"/>
+              </svg>
+              Retour
+            </button>
+          )}
           <p className="aj-date">{todayLabel()}</p>
           <h1 className="plan-title">Planning du jour</h1>
           {planning && step !== 'validation' && (
