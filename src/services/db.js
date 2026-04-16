@@ -226,7 +226,7 @@ export async function getPlanningForDate(date) {
 export async function savePlanning(planning) {
   const { error } = await supabase
     .from('plannings')
-    .upsert(toPlanningRow(planning), { onConflict: 'id' })
+    .upsert(toPlanningRow(planning), { onConflict: 'date' })
   raise(error, 'savePlanning')
 }
 
