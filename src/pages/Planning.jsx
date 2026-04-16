@@ -586,6 +586,23 @@ export default function Planning({ forceStep }) {
   const tachesActiv = planning?.tachesPlanifiees.filter(t => !t.done) ?? []
   const premiereId  = tachesActiv[0]?.tacheId
 
+  // Heures restantes = total initial − durée des tâches déjà cochées
+  const minutesRestantes = (() => {
+    if (!planning) return null
+    const totalMin  = (planning.heuresDisponibles || 0) * 60
+    const faitesMin = planning.tachesPlanifiees
+      .filter(t => t.done)
+      .reduce((acc, t) => acc + (t.dureeMin || 0), 0)
+    return Math.max(0, totalMin - faitesMin)
+  })()
+  const formatHeuresRestantes = (min) => {
+    const h = Math.floor(min / 60)
+    const m = min % 60
+    if (h === 0) return `${m}min`
+    if (m === 0) return `${h}h`
+    return `${h}h${String(m).padStart(2, '0')}`
+  }
+
   const routineGroups = {
     daily:   routines.filter(r => r.recurrence === 'daily'),
     weekly:  routines.filter(r => r.recurrence === 'weekly'),
@@ -621,8 +638,13 @@ export default function Planning({ forceStep }) {
         <div>
           <p className="aj-date">{todayLabel()}</p>
           <h1 className="plan-title">Planning du jour</h1>
-          {planning && step !== 'validation' && (
-            <p className="plan-sub">{planning.heuresDisponibles}h · {tachesActiv.length} tâche{tachesActiv.length !== 1 ? 's' : ''} restante{tachesActiv.length !== 1 ? 's' : ''}</p>
+          {planning && step !== 'validation' && minutesRestantes !== null && (
+            <p className="plan-sub">
+              {tachesActiv.length === 0
+                ? 'Toutes les tâches sont terminées 🎉'
+                : `Il te reste ${formatHeuresRestantes(minutesRestantes)} sur ${planning.heuresDisponibles}h disponibles`
+              }
+            </p>
           )}
         </div>
         <button className="plan-refresh-btn"
