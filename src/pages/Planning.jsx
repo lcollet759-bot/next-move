@@ -322,13 +322,14 @@ function BlocTache({ tp, isFirst, editingId, dureeDraft, onEditStart, onDraftCha
 }
 
 // ── Page principale ───────────────────────────────────────────────────────────
-export default function Planning() {
+export default function Planning({ forceStep }) {
   const { dossiersAujourdhui, apiKey, toggleTache } = useApp()
   const navigate = useNavigate()
 
   // ── Données planning ────────────────────────────────────────────────────
   const [planning,     setPlanning]     = useState(null)
-  const [loading,      setLoading]      = useState(true)
+  // Si forceStep fourni, on sait déjà qu'on affiche un modal — pas besoin du loader
+  const [loading,      setLoading]      = useState(!forceStep)
   const [generating,   setGenerating]   = useState(false)
   const [genError,     setGenError]     = useState(null)
 
@@ -357,17 +358,31 @@ export default function Planning() {
 
   // ── Chargement initial ──────────────────────────────────────────────────
   useEffect(() => {
+    // Routines depuis cache (sync, toujours)
+    try {
+      const cached = localStorage.getItem(ROUTINES_KEY)
+      if (cached) setRoutines(JSON.parse(cached))
+    } catch {}
+
+    if (forceStep) {
+      // Entrée directe depuis un point d'appel externe (ex : Aujourd'hui) :
+      // afficher la modal demandée immédiatement, sans charger le planning existant.
+      setStep(forceStep)
+      // Rafraîchir les routines depuis le serveur en arrière-plan
+      getRoutines()
+        .then(fresh => { setRoutines(fresh); localStorage.setItem(ROUTINES_KEY, JSON.stringify(fresh)) })
+        .catch(() => {})
+      return
+    }
+
+    // Chargement normal (accès via route /planning)
     async function load() {
-      // Routines
       try {
-        const cached = localStorage.getItem(ROUTINES_KEY)
-        if (cached) setRoutines(JSON.parse(cached))
         const fresh = await getRoutines()
         setRoutines(fresh)
         localStorage.setItem(ROUTINES_KEY, JSON.stringify(fresh))
       } catch {}
 
-      // Planning du jour
       const today  = todayISO()
       const cached = localStorage.getItem(PLANNING_KEY(today))
       if (cached) {
@@ -383,7 +398,7 @@ export default function Planning() {
       finally { setLoading(false) }
     }
     load()
-  }, [])
+  }, []) // eslint-disable-line
 
   // ── Auto-sync tâches cochées ─────────────────────────────────────────────
   useEffect(() => {

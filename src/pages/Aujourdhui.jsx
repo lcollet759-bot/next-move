@@ -278,7 +278,7 @@ export default function Aujourdhui() {
             </button>
           </div>
           <div className="aj-overlay-body">
-            <Planning />
+            <Planning forceStep="heures" />
           </div>
         </div>
       )}
