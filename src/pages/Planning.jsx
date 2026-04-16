@@ -331,7 +331,10 @@ export default function Planning({ forceStep }) {
 
       const today  = todayISO()
       const cached = localStorage.getItem(PLANNING_KEY(today))
-      if (cached) {
+      // Si navigué depuis l'app (location.key !== 'default'), ignorer le cache
+      // et forcer l'affichage du choix des heures, même si un planning existe déjà.
+      // Un chargement direct d'URL (refresh) conserve le planning en cache.
+      if (cached && location.key === 'default') {
         try { setPlanning(JSON.parse(cached)); setLoading(false); return } catch {}
       }
       try {
