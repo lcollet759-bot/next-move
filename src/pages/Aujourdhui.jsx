@@ -466,6 +466,13 @@ export default function Aujourdhui() {
           background: var(--bg, #F9F8F5);
           display: flex; flex-direction: column;
           animation: ajOverlayIn 0.22s ease forwards;
+          /*
+           * pointer-events: none sur le wrapper pour éviter que le stacking context
+           * position:fixed n'intercepte les touch events destinés aux enfants
+           * (notamment .validation-screen et son bouton Confirmer).
+           * Les enfants directs remettent pointer-events: auto explicitement.
+           */
+          pointer-events: none;
         }
         /* Pas de transform ici — un transform crée un containing block pour les
            position:fixed enfants (Planning.jsx) et casse leur positionnement */
@@ -475,6 +482,7 @@ export default function Aujourdhui() {
           padding: 14px 16px 10px;
           border-bottom: 1px solid var(--border);
           background: var(--surface); flex-shrink: 0;
+          pointer-events: auto;
         }
         .aj-overlay-back {
           display: inline-flex; align-items: center; gap: 4px;
@@ -485,6 +493,7 @@ export default function Aujourdhui() {
         .aj-overlay-back:hover { color: var(--text); }
         .aj-overlay-body {
           flex: 1; overflow-y: auto;
+          pointer-events: auto;
         }
         .section-label {
           font-size: 12px;

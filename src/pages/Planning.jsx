@@ -893,6 +893,9 @@ export default function Planning({ forceStep }) {
           z-index: 100; overflow-y: auto;
           display: flex; flex-direction: column;
           animation: valFadeIn 0.2s ease forwards;
+          /* Garantit la réception des events même quand le parent overlay
+             a pointer-events:none pour éviter l'interception stacking context */
+          pointer-events: auto;
         }
         @keyframes valFadeIn { from { opacity: 0; } to { opacity: 1; } }
         .validation-header {
