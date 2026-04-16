@@ -205,9 +205,9 @@ function AuthenticatedApp() {
       <ScrollToTop />
       <main className="main-content">
         <Routes>
-          <Route path="/"             element={<Navigate to="/aujourdhui" replace />} />
-          <Route path="/login"        element={<Navigate to="/aujourdhui" replace />} />
-          <Route path="/aujourdhui"   element={<Aujourdhui />} />
+          <Route path="/"             element={<Aujourdhui />} />
+          <Route path="/login"        element={<Navigate to="/" replace />} />
+          <Route path="/aujourdhui"   element={<Navigate to="/" replace />} />
           <Route path="/capturer"     element={<Capturer />} />
           <Route path="/dossiers"     element={<TousDossiers />} />
           <Route path="/dossiers/:id" element={<DossierDetail />} />
