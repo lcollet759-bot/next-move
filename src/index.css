@@ -7,31 +7,49 @@
 
 :root {
   /* Palette */
-  --bg:             #F9F8F5;
+  --bg:             #F7F5F0;
   --surface:        #FFFFFF;
-  --border:         #EEECE7;
-  --border-light:   #F5F3EE;
-  --text:           #1A1916;
-  --text-secondary: #5A5855;
-  --text-muted:     #C4C0B6;
-  --green:          #3D7A52;
-  --green-light:    #EDF5F0;
-  --green-dark:     #2E5F3E;
+  --border:         #DDD8CE;
+  --border-light:   #F0EBE3;
+  --text:           #2A1F14;
+  --text-secondary: #A09080;
+  --text-muted:     #C0B8A8;
+  --green:          #1C3829;
+  --green-light:    #E8F0EA;
+  --green-dark:     #1C3829;
   --amber:          #B45309;
-  --amber-light:    #FEF3C7;
+  --amber-light:    #FFF0E8;
   --red:            #C0392B;
-  --red-light:      #FDECEA;
-  --gray:           #8A8680;
-  --gray-light:     #F5F3EE;
+  --red-light:      #FFF0E8;
+  --gray:           #A09080;
+  --gray-light:     #F0EBE3;
+
+  /* New tokens */
+  --color-bg:           #F7F5F0;
+  --color-surface:      #FFFFFF;
+  --color-border:       #DDD8CE;
+  --color-border-light: #F0EBE3;
+  --color-text:         #2A1F14;
+  --color-text-muted:   #A09080;
+  --color-text-hint:    #C0B8A8;
+  --color-primary:      #1C3829;
+  --color-primary-light:#E8F0EA;
+  --color-accent:       #C4623A;
+  --color-accent-light: #FFF0E8;
+  --color-amber:        #B45309;
+  --color-danger:       #C0392B;
 
   /* Shape */
-  --radius:    18px;
+  --radius:    14px;
   --radius-sm: 10px;
   --radius-xs: 6px;
+  --color-radius-card:  14px;
+  --color-radius-btn:   10px;
+  --color-radius-micro: 6px;
 
   /* Shadow */
-  --shadow:    0 1px 3px rgba(26,25,22,0.06), 0 1px 2px rgba(26,25,22,0.04);
-  --shadow-md: 0 4px 16px rgba(26,25,22,0.08);
+  --shadow:    0 1px 3px rgba(42,31,20,0.06), 0 1px 2px rgba(42,31,20,0.04);
+  --shadow-md: 0 4px 16px rgba(42,31,20,0.08);
 
   --nav-height: 68px;
 }
@@ -40,7 +58,7 @@ html, body {
   height: 100%;
   background: var(--bg);
   color: var(--text);
-  font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
   font-size: 16px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
@@ -67,7 +85,7 @@ html, body {
 }
 
 h1, h2, h3 {
-  font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
 button { cursor: pointer; font-family: inherit; }
