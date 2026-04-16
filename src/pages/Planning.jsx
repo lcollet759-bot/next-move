@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { useNavigate, useLocation } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { v4 as uuid } from 'uuid'
 import { useApp } from '../context/AppContext'
 import DossierSheet from '../components/DossierSheet'
@@ -325,16 +325,11 @@ function BlocTache({ tp, isFirst, editingId, dureeDraft, onEditStart, onDraftCha
 export default function Planning({ forceStep }) {
   const { dossiersAujourdhui, apiKey, toggleTache } = useApp()
   const navigate = useNavigate()
-  const location = useLocation()
-
-  // forceHeures : passé via location.state depuis Aujourd'hui
-  // → afficher le modal heures immédiatement, ignorer le planning en cache
-  const forceHeures = forceStep === 'heures' || location.state?.forceHeures === true
 
   // ── Données planning ────────────────────────────────────────────────────
   const [planning,     setPlanning]     = useState(null)
-  // Pas de skeleton si on force le modal heures directement
-  const [loading,      setLoading]      = useState(!forceHeures)
+  // Si forceStep fourni, on sait déjà qu'on affiche un modal — pas besoin du loader
+  const [loading,      setLoading]      = useState(!forceStep)
   const [generating,   setGenerating]   = useState(false)
   const [genError,     setGenError]     = useState(null)
 
@@ -369,10 +364,11 @@ export default function Planning({ forceStep }) {
       if (cached) setRoutines(JSON.parse(cached))
     } catch {}
 
-    if (forceHeures) {
-      // Venu depuis Aujourd'hui → modal heures immédiat, planning en cache ignoré
-      setStep('heures')
-      // Routines en arrière-plan
+    if (forceStep) {
+      // Entrée directe depuis un point d'appel externe (ex : Aujourd'hui) :
+      // afficher la modal demandée immédiatement, sans charger le planning existant.
+      setStep(forceStep)
+      // Rafraîchir les routines depuis le serveur en arrière-plan
       getRoutines()
         .then(fresh => { setRoutines(fresh); localStorage.setItem(ROUTINES_KEY, JSON.stringify(fresh)) })
         .catch(() => {})
@@ -506,8 +502,6 @@ export default function Planning({ forceStep }) {
     setStep(null)
     setProposal(null)
     setPropDraft([])
-    // Si on vient d'Aujourd'hui (forceHeures), retourner sur cette page
-    if (forceHeures) navigate(-1)
   }
 
   // ── Sauvegarde ───────────────────────────────────────────────────────────
@@ -614,15 +608,7 @@ export default function Planning({ forceStep }) {
     <div className="page">
       {/* Header */}
       <div className="page-header plan-header">
-        <div style={{ flex: 1 }}>
-          {location.state?.from === 'aujourdhui' && (
-            <button className="plan-back-btn" onClick={() => navigate('/aujourdhui', { replace: true })}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="15 18 9 12 15 6"/>
-              </svg>
-              Retour
-            </button>
-          )}
+        <div>
           <p className="aj-date">{todayLabel()}</p>
           <h1 className="plan-title">Planning du jour</h1>
           {planning && step !== 'validation' && (
@@ -811,13 +797,6 @@ export default function Planning({ forceStep }) {
         .plan-header { display: flex; align-items: flex-start; justify-content: space-between; padding-bottom: 16px; }
         .plan-title  { font-size: 28px; font-weight: 700; color: var(--text); letter-spacing: -0.8px; }
         .plan-sub    { font-size: 13px; color: var(--text-muted); margin-top: 4px; }
-        .plan-back-btn {
-          display: inline-flex; align-items: center; gap: 4px;
-          border: none; background: none; cursor: pointer;
-          font-size: 13px; color: var(--text-muted); font-family: inherit;
-          padding: 0 0 10px; transition: color 0.15s;
-        }
-        .plan-back-btn:hover { color: var(--text); }
         .plan-refresh-btn {
           margin-top: 8px; flex-shrink: 0; border: none;
           background: var(--gray-light); color: var(--text-muted);
@@ -914,9 +893,6 @@ export default function Planning({ forceStep }) {
           z-index: 100; overflow-y: auto;
           display: flex; flex-direction: column;
           animation: valFadeIn 0.2s ease forwards;
-          /* Garantit la réception des events même quand le parent overlay
-             a pointer-events:none pour éviter l'interception stacking context */
-          pointer-events: auto;
         }
         @keyframes valFadeIn { from { opacity: 0; } to { opacity: 1; } }
         .validation-header {
