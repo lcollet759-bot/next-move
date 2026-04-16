@@ -70,11 +70,7 @@ export default function Aujourdhui() {
   const [loadingMsg, setLoadingMsg] = useState(false)
   const [msgError,   setMsgError]   = useState(null)
 
-  // ── Sélection heures planning ────────────────────────────────────────────
-  const [heuresCustom, setHeuresCustom] = useState(false)
-  const [heuresVal,    setHeuresVal]    = useState('')
-
-  // ── Modal "Par où commencer ?" ──────────────────────────────────────────
+  // ── Modal "Mes tâches du moment" (brain dump) ──────────────────────────
   const [showBD,    setShowBD]    = useState(false)
   const [bdTexte,   setBdTexte]   = useState('')
   const [bdLoading, setBdLoading] = useState(false)
@@ -231,44 +227,52 @@ export default function Aujourdhui() {
         </div>
       )}
 
-      {/* Boutons d'action */}
+      {/* ── 3 boutons d'action ───────────────────────────────────────── */}
       <div className="section aj-actions">
-        <button className="aj-action-btn aj-action-secondary" onClick={() => setShowBD(true)}>
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-          </svg>
-          Par où commencer ?
+        {/* 1. Démarrer */}
+        <button className="aj-action-row" onClick={() => navigate('/focus')}>
+          <div className="aj-action-icon aj-action-icon-primary">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+              <polygon points="5 3 19 12 5 21 5 3"/>
+            </svg>
+          </div>
+          <div className="aj-action-text">
+            <span className="aj-action-title">Démarrer</span>
+            <span className="aj-action-sub">Une tâche à la fois, dans le bon ordre</span>
+          </div>
+          <span className="aj-action-chevron">›</span>
         </button>
-        <div className="aj-planifier">
-          <p className="aj-planifier-label">Planifier ma journée</p>
-          {!heuresCustom ? (
-            <div className="aj-heures-row">
-              {[{h:2,l:'2h'},{h:4,l:'4h'},{h:6,l:'6h'}].map(({h,l}) => (
-                <button key={h} className="aj-h-btn" onClick={() => navigate('/planning', { state: { heures: h } })}>
-                  {l}
-                </button>
-              ))}
-              <button className="aj-h-btn aj-h-autre" onClick={() => setHeuresCustom(true)}>Autre…</button>
-            </div>
-          ) : (
-            <div className="aj-heures-custom">
-              <input
-                type="number" min="0.5" max="12" step="0.5"
-                className="input" placeholder="ex : 3"
-                value={heuresVal}
-                onChange={e => setHeuresVal(e.target.value)}
-                autoFocus
-                style={{ flex: 1, fontSize: 14, padding: '9px 12px' }}
-              />
-              <button className="btn btn-ghost btn-sm" onClick={() => { setHeuresCustom(false); setHeuresVal('') }}>✕</button>
-              <button className="btn btn-primary btn-sm"
-                disabled={!heuresVal || parseFloat(heuresVal) <= 0}
-                onClick={() => { navigate('/planning', { state: { heures: parseFloat(heuresVal) } }); setHeuresCustom(false); setHeuresVal('') }}>
-                →
-              </button>
-            </div>
-          )}
-        </div>
+
+        {/* 2. Planifier ma journée */}
+        <button className="aj-action-row" onClick={() => navigate('/planning')}>
+          <div className="aj-action-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="4" width="18" height="18" rx="2"/>
+              <line x1="16" y1="2" x2="16" y2="6"/>
+              <line x1="8" y1="2" x2="8" y2="6"/>
+              <line x1="3" y1="10" x2="21" y2="10"/>
+            </svg>
+          </div>
+          <div className="aj-action-text">
+            <span className="aj-action-title">Planifier ma journée</span>
+            <span className="aj-action-sub">L'IA optimise tes heures disponibles</span>
+          </div>
+          <span className="aj-action-chevron">›</span>
+        </button>
+
+        {/* 3. Mes tâches du moment */}
+        <button className="aj-action-row" onClick={() => setShowBD(true)}>
+          <div className="aj-action-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+            </svg>
+          </div>
+          <div className="aj-action-text">
+            <span className="aj-action-title">Mes tâches du moment</span>
+            <span className="aj-action-sub">Dictez, l'IA trie et organise</span>
+          </div>
+          <span className="aj-action-chevron">›</span>
+        </button>
       </div>
 
       {/* Dossiers du jour */}
@@ -284,19 +288,10 @@ export default function Aujourdhui() {
           </div>
         ) : (
           <>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-              <span className="section-label" style={{ marginBottom: 0 }}>
+            <div style={{ marginBottom: 12 }}>
+              <span className="section-label">
                 {dossiersAujourdhui.length} dossier{dossiersAujourdhui.length > 1 ? 's' : ''} prioritaire{dossiersAujourdhui.length > 1 ? 's' : ''}
               </span>
-              <button
-                className="focus-start-btn"
-                onClick={() => navigate('/focus')}
-              >
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" style={{ flexShrink: 0 }}>
-                  <polygon points="5 3 19 12 5 21 5 3"/>
-                </svg>
-                Démarrer ma journée
-              </button>
             </div>
             {dossiersAujourdhui.map(d => (
               <DossierCard key={d.id} dossier={d} showRaison />
@@ -432,64 +427,43 @@ export default function Aujourdhui() {
         .refresh-btn:hover { color: var(--green); background: rgba(0,0,0,0.05); }
         .morning-text { font-size: 13px; color: var(--text-secondary); line-height: 1.55; }
 
-        .focus-start-btn {
-          display: flex; align-items: center; gap: 6px;
-          padding: 7px 13px;
-          background: var(--green); color: #fff;
-          border: none; border-radius: 20px;
-          font-size: 12px; font-weight: 600;
-          cursor: pointer; font-family: inherit;
-          transition: opacity 0.15s;
-          white-space: nowrap; flex-shrink: 0;
-        }
-        .focus-start-btn:active { opacity: 0.8; }
-
-        /* ── Boutons d'action Aujourd'hui ─────────────────────────────── */
+        /* ── 3 boutons d'action ───────────────────────────────────────── */
         .aj-actions {
-          display: flex; gap: 10px; padding-top: 0;
+          display: flex; flex-direction: column; gap: 8px; padding-top: 0;
         }
-        .aj-action-btn {
-          flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px;
-          padding: 11px 10px; border-radius: var(--radius-sm);
-          font-size: 13px; font-weight: 600; font-family: inherit;
-          cursor: pointer; transition: opacity 0.15s, background 0.15s;
-          border: 1.5px solid transparent;
+        .aj-action-row {
+          width: 100%; display: flex; align-items: center; gap: 12px;
+          padding: 12px 14px;
+          background: #fff; border: 1px solid #EEECE7;
+          border-radius: 16px;
+          cursor: pointer; font-family: inherit;
+          transition: background 0.12s;
+          text-align: left;
         }
-        .aj-action-btn:active { opacity: 0.8; }
-        .aj-action-secondary {
-          background: var(--surface); color: var(--text);
-          border-color: var(--border);
+        .aj-action-row:active { background: #F5F3EE; }
+        .aj-action-icon {
+          width: 36px; height: 36px; border-radius: 10px;
+          background: #F5F3EE;
+          display: flex; align-items: center; justify-content: center;
+          flex-shrink: 0; color: var(--text-muted);
         }
-        .aj-action-secondary:hover { background: var(--gray-light); }
-        .aj-action-primary {
-          background: var(--green); color: #fff;
+        .aj-action-icon-primary {
+          background: #E8F0EA;
+          color: var(--green);
         }
-        .aj-action-primary:hover { opacity: 0.9; }
-
-        /* Sélection heures planning */
-        .aj-planifier {
-          background: var(--surface);
-          border: 1.5px solid var(--border);
-          border-radius: var(--radius-sm);
-          padding: 11px 12px;
-          flex: 1;
+        .aj-action-text {
+          flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0;
         }
-        .aj-planifier-label {
-          font-size: 11px; font-weight: 600;
-          color: var(--text-muted); text-transform: uppercase;
-          letter-spacing: 0.1em; margin-bottom: 8px;
+        .aj-action-title {
+          font-size: 14px; font-weight: 600; color: var(--text); line-height: 1.2;
         }
-        .aj-heures-row { display: flex; gap: 6px; }
-        .aj-h-btn {
-          flex: 1; padding: 8px 4px;
-          border: 1.5px solid var(--border); border-radius: var(--radius-sm);
-          background: var(--bg); font-size: 14px; font-weight: 700;
-          color: var(--text); cursor: pointer; font-family: inherit;
-          transition: border-color 0.15s, background 0.15s;
+        .aj-action-sub {
+          font-size: 12px; color: var(--text-muted); line-height: 1.3;
         }
-        .aj-h-btn:hover { border-color: var(--green); background: var(--green-light); color: var(--green); }
-        .aj-h-autre { font-size: 12px; font-weight: 500; color: var(--text-muted); }
-        .aj-heures-custom { display: flex; gap: 6px; align-items: center; }
+        .aj-action-chevron {
+          font-size: 20px; color: var(--border); flex-shrink: 0;
+          line-height: 1; margin-top: -1px;
+        }
 
         .section-label {
           font-size: 12px;
