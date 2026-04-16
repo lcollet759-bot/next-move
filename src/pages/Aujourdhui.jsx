@@ -1,8 +1,16 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
-import { genererMessageMatinal } from '../services/claude'
+import { genererMessageMatinal, analyserBrainDump } from '../services/claude'
 import DossierCard from '../components/DossierCard'
+import Planning from './Planning'
+
+function calcQuadrant(u, i) {
+  if (u && i)  return 1
+  if (!u && i) return 2
+  if (u && !i) return 3
+  return 4
+}
 
 // Transforme **gras** et sauts de ligne en JSX
 function renderMarkdown(text) {
@@ -57,11 +65,37 @@ function dossiersHash(dossiers) {
 }
 
 export default function Aujourdhui() {
-  const { dossiersAujourdhui, loading, apiKey } = useApp()
+  const { dossiersAujourdhui, loading, apiKey, creerDossier } = useApp()
   const navigate = useNavigate()
   const [message,    setMessage]    = useState(null)
   const [loadingMsg, setLoadingMsg] = useState(false)
   const [msgError,   setMsgError]   = useState(null)
+
+  // ── Overlay Planning ────────────────────────────────────────────────────
+  const [showPlanning,  setShowPlanning]  = useState(false)
+
+  // ── Modal "Par où commencer ?" ──────────────────────────────────────────
+  const [showBD,    setShowBD]    = useState(false)
+  const [bdTexte,   setBdTexte]   = useState('')
+  const [bdLoading, setBdLoading] = useState(false)
+  const [bdError,   setBdError]   = useState('')
+
+  const lancerBrainDump = async () => {
+    if (!bdTexte.trim()) return
+    if (!apiKey) { setBdError('Clé API requise — configurez-la dans Réglages.'); return }
+    setBdLoading(true); setBdError('')
+    try {
+      const dossiers = await analyserBrainDump(bdTexte)
+      const enrichis = dossiers.map(d => ({ ...d, origine: 'vocal', quadrant: calcQuadrant(d.urgence, d.importance) }))
+      await Promise.all(enrichis.map(d => creerDossier(d)))
+      setShowBD(false); setBdTexte('')
+      navigate('/focus')
+    } catch (e) {
+      setBdError(e.message || 'Erreur lors de l\'analyse.')
+    } finally {
+      setBdLoading(false)
+    }
+  }
 
   function generer(dossiers) {
     const today = new Date().toDateString()
@@ -181,6 +215,23 @@ export default function Aujourdhui() {
         </div>
       )}
 
+      {/* Boutons d'action */}
+      <div className="section aj-actions">
+        <button className="aj-action-btn aj-action-secondary" onClick={() => setShowBD(true)}>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+          </svg>
+          Par où commencer ?
+        </button>
+        <button className="aj-action-btn aj-action-primary" onClick={() => setShowPlanning(true)}>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/>
+            <line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+          </svg>
+          Planifier ma journée
+        </button>
+      </div>
+
       {/* Dossiers du jour */}
       <div className="section">
         {dossiersAujourdhui.length === 0 ? (
@@ -214,6 +265,69 @@ export default function Aujourdhui() {
           </>
         )}
       </div>
+
+      {/* ── Overlay Planning (Planning.jsx monté tel quel) ──────────────── */}
+      {showPlanning && (
+        <div className="aj-overlay">
+          <div className="aj-overlay-header">
+            <button className="aj-overlay-back" onClick={() => setShowPlanning(false)}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="15 18 9 12 15 6"/>
+              </svg>
+              Retour
+            </button>
+          </div>
+          <div className="aj-overlay-body">
+            <Planning />
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal "Par où commencer ?" ────────────────────────────────── */}
+      {showBD && (
+        <div className="overlay" onClick={() => { if (!bdLoading) { setShowBD(false); setBdTexte(''); setBdError('') } }}>
+          <div className="sheet" onClick={e => e.stopPropagation()}>
+            <h3 style={{ fontSize: 18, fontWeight: 700, marginBottom: 6 }}>Par où commencer ?</h3>
+            <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 14, lineHeight: 1.5 }}>
+              Décrivez tout ce qui vous préoccupe. L'IA crée les dossiers et lance le Mode Focus.
+            </p>
+            <textarea
+              className="input"
+              rows={5}
+              placeholder="Ex : j'ai une facture CFF à payer avant vendredi, un appel à passer à la caisse maladie, et je dois rendre le rapport trimestriel…"
+              value={bdTexte}
+              onChange={e => setBdTexte(e.target.value)}
+              disabled={bdLoading}
+              style={{ resize: 'none', marginBottom: 10, lineHeight: 1.5 }}
+              autoFocus
+            />
+            {bdError && <p style={{ fontSize: 13, color: 'var(--red)', marginBottom: 10 }}>{bdError}</p>}
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button className="btn btn-ghost btn-sm" style={{ flex: 1 }}
+                onClick={() => { setShowBD(false); setBdTexte(''); setBdError('') }}
+                disabled={bdLoading}>
+                Annuler
+              </button>
+              <button className="btn btn-primary" style={{ flex: 2 }}
+                onClick={lancerBrainDump}
+                disabled={bdLoading || !bdTexte.trim()}>
+                {bdLoading
+                  ? <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <div className="spinner" style={{ width: 12, height: 12, borderWidth: 2 }} />
+                      Analyse en cours…
+                    </span>
+                  : <>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" style={{ marginRight: 4 }}>
+                        <polygon points="5 3 19 12 5 21 5 3"/>
+                      </svg>
+                      Analyser et lancer
+                    </>
+                }
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <style>{`
         /* Header */
@@ -307,6 +421,53 @@ export default function Aujourdhui() {
           white-space: nowrap; flex-shrink: 0;
         }
         .focus-start-btn:active { opacity: 0.8; }
+
+        /* ── Boutons d'action Aujourd'hui ─────────────────────────────── */
+        .aj-actions {
+          display: flex; gap: 10px; padding-top: 0;
+        }
+        .aj-action-btn {
+          flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px;
+          padding: 11px 10px; border-radius: var(--radius-sm);
+          font-size: 13px; font-weight: 600; font-family: inherit;
+          cursor: pointer; transition: opacity 0.15s, background 0.15s;
+          border: 1.5px solid transparent;
+        }
+        .aj-action-btn:active { opacity: 0.8; }
+        .aj-action-secondary {
+          background: var(--surface); color: var(--text);
+          border-color: var(--border);
+        }
+        .aj-action-secondary:hover { background: var(--gray-light); }
+        .aj-action-primary {
+          background: var(--green); color: #fff;
+        }
+        .aj-action-primary:hover { opacity: 0.9; }
+
+        /* ── Overlay Planning plein écran ─────────────────────────────── */
+        .aj-overlay {
+          position: fixed; inset: 0; z-index: 110;
+          background: var(--bg, #F9F8F5);
+          display: flex; flex-direction: column;
+          animation: ajOverlayIn 0.22s ease forwards;
+        }
+        @keyframes ajOverlayIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+        .aj-overlay-header {
+          display: flex; align-items: center;
+          padding: 14px 16px 10px;
+          border-bottom: 1px solid var(--border);
+          background: var(--surface); flex-shrink: 0;
+        }
+        .aj-overlay-back {
+          display: inline-flex; align-items: center; gap: 4px;
+          border: none; background: none; cursor: pointer;
+          font-size: 14px; color: var(--text-muted); font-family: inherit;
+          padding: 4px 0; transition: color 0.15s;
+        }
+        .aj-overlay-back:hover { color: var(--text); }
+        .aj-overlay-body {
+          flex: 1; overflow-y: auto;
+        }
         .section-label {
           font-size: 12px;
           font-weight: 500;
