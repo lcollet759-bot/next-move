@@ -273,6 +273,10 @@ export default function Planning({ forceStep }) {
   const [routines,      setRoutines]     = useState([])
   const [showAddR,      setShowAddR]     = useState(false)
 
+  // ── Sélection heures — input "Autre" ────────────────────────────────────
+  const [heuresCustom, setHeuresCustom] = useState(false)
+  const [heuresVal,    setHeuresVal]    = useState('')
+
   // ── Ajout rapide inline (écran routines) ─────────────────────────────────
   const [newRoutineTitre, setNewRoutineTitre] = useState('')
   const [newRoutineDuree, setNewRoutineDuree] = useState('30')
@@ -761,22 +765,56 @@ export default function Planning({ forceStep }) {
         </div>
       )}
 
-      {/* ── Modaux ─────────────────────────────────────────────────────── */}
+      {/* ── Écran sélection heures (plein écran, obligatoire) ───────── */}
       {step === 'heures' && (
-        <div className="section" style={{ marginTop: 8 }}>
-          <div className="morning-card" style={{ flexDirection: 'column', gap: 12, alignItems: 'flex-start' }}>
-            <p style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>Combien d'heures as-tu aujourd'hui ?</p>
-            <div style={{ display: 'flex', gap: 8, width: '100%' }}>
-              {[{ h: 2, sub: '2h' }, { h: 4, sub: '4h' }, { h: 6, sub: '6h' }].map(({ h, sub }) => (
-                <button key={h} className="heures-option" onClick={() => handleHeures(h)}
-                  style={{ flex: 1, padding: '10px 8px', textAlign: 'center' }}>
-                  <span className="heures-val">{sub}</span>
+        <div className="heures-screen">
+          <div className="heures-screen-body">
+            <p className="heures-screen-title">Combien d'heures as-tu aujourd'hui ?</p>
+            <p className="heures-screen-sub">Je construirai le planning optimal avec l'IA.</p>
+
+            {!heuresCustom ? (
+              <div className="heures-grid">
+                {[
+                  { h: 2, label: '2h',  sub: 'Courte session' },
+                  { h: 4, label: '4h',  sub: 'Demi-journée'   },
+                  { h: 6, label: '6h',  sub: 'Journée complète'},
+                ].map(({ h, label, sub }) => (
+                  <button key={h} className="heures-option" onClick={() => handleHeures(h)}>
+                    <span className="heures-val">{label}</span>
+                    <span className="heures-sub">{sub}</span>
+                  </button>
+                ))}
+                <button className="heures-option heures-autre" onClick={() => setHeuresCustom(true)}>
+                  <span className="heures-val">Autre</span>
+                  <span className="heures-sub">Durée libre</span>
                 </button>
-              ))}
-            </div>
-            <button className="btn btn-ghost btn-sm btn-full" onClick={() => handleHeures(4)}>
-              Autre durée (4h par défaut) →
-            </button>
+              </div>
+            ) : (
+              <div className="heures-custom-wrap">
+                <p style={{ fontSize: 14, marginBottom: 10, color: 'var(--text-muted)' }}>
+                  Durée disponible (heures) :
+                </p>
+                <input
+                  type="number" min="0.5" max="12" step="0.5"
+                  className="input" placeholder="ex : 3"
+                  value={heuresVal}
+                  onChange={e => setHeuresVal(e.target.value)}
+                  autoFocus
+                  style={{ marginBottom: 12 }}
+                />
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button className="btn btn-ghost btn-sm" style={{ flex: 1 }}
+                    onClick={() => { setHeuresCustom(false); setHeuresVal('') }}>
+                    ← Retour
+                  </button>
+                  <button className="btn btn-primary" style={{ flex: 2 }}
+                    disabled={!heuresVal || parseFloat(heuresVal) <= 0}
+                    onClick={() => { handleHeures(parseFloat(heuresVal)); setHeuresCustom(false); setHeuresVal('') }}>
+                    Continuer →
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -907,6 +945,43 @@ export default function Planning({ forceStep }) {
       )}
 
       <style>{`
+        /* ── Écran sélection heures ────────────────────────────────── */
+        .heures-screen {
+          position: fixed; inset: 0; z-index: 100;
+          background: var(--bg, #F9F8F5);
+          display: flex; align-items: center; justify-content: center;
+          padding: 24px;
+          pointer-events: auto;
+        }
+        .heures-screen-body {
+          width: 100%; max-width: 420px;
+        }
+        .heures-screen-title {
+          font-size: 22px; font-weight: 700; color: var(--text);
+          letter-spacing: -0.5px; margin-bottom: 8px;
+        }
+        .heures-screen-sub {
+          font-size: 14px; color: var(--text-muted);
+          margin-bottom: 28px; line-height: 1.5;
+        }
+        .heures-grid {
+          display: flex; flex-direction: column; gap: 10px;
+        }
+        .heures-option {
+          width: 100%; display: flex; align-items: center; justify-content: space-between;
+          padding: 16px 18px;
+          border: 1.5px solid var(--border); border-radius: var(--radius-sm);
+          background: var(--surface); cursor: pointer; font-family: inherit;
+          transition: border-color 0.15s, background 0.15s;
+          text-align: left;
+        }
+        .heures-option:hover { border-color: var(--green); background: var(--green-light); }
+        .heures-option:active { opacity: 0.85; }
+        .heures-autre { opacity: 0.7; }
+        .heures-val { font-size: 18px; font-weight: 700; color: var(--green); }
+        .heures-sub { font-size: 13px; color: var(--text-muted); }
+        .heures-custom-wrap { display: flex; flex-direction: column; }
+
         .plan-back-btn {
           display: inline-flex; align-items: center; gap: 5px;
           position: sticky; top: 0; z-index: 20;
