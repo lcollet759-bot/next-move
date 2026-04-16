@@ -739,15 +739,15 @@ export default function Planning() {
 
           {/* Bannière raisonnement */}
           <div className="validation-banner">
-            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
-              <span style={{ fontSize: 18 }}>🤖</span>
-              <div style={{ flex: 1 }}>
-                <p style={{ fontSize: 12, fontWeight: 700, color: 'var(--green)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4 }}>
-                  Planning proposé par l'IA
-                </p>
-                <p style={{ fontSize: 13, color: 'var(--text)', lineHeight: 1.5 }}>{proposal.raisonnement}</p>
-              </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 8 }}>
+              <div className="val-dot" />
+              <p style={{ fontSize: 12, fontWeight: 700, color: 'var(--green)', textTransform: 'uppercase', letterSpacing: '0.08em', margin: 0 }}>
+                Planning proposé par l'IA
+              </p>
             </div>
+            <p style={{ fontSize: 13, color: 'var(--text)', lineHeight: 1.6, margin: 0 }}>
+              {proposal.raisonnement || 'Planning optimal calculé selon vos priorités du jour.'}
+            </p>
           </div>
 
           {/* Liste des blocs proposés */}
@@ -898,6 +898,15 @@ export default function Planning() {
           margin: 12px 16px; padding: 14px 16px; flex-shrink: 0;
           background: var(--green-light); border: 1px solid var(--green);
           border-radius: var(--radius);
+        }
+        .val-dot {
+          width: 7px; height: 7px; border-radius: 50%;
+          background: var(--green); flex-shrink: 0;
+          animation: pulse-dot 2s ease-in-out infinite;
+        }
+        @keyframes pulse-dot {
+          0%, 100% { opacity: 1; transform: scale(1); }
+          50%       { opacity: 0.4; transform: scale(0.7); }
         }
         /* Barre d'actions dans le flux normal — jamais position:fixed */
         .validation-actions {

@@ -399,6 +399,8 @@ ${listeTaches || '(aucune tâche)'}${listeRoutines}`
   const raw    = await callClaude(system, userMsg, { maxTokens: 1800, temperature: 0.2 })
   const parsed = parseJSON(raw)
   if (!Array.isArray(parsed.taches)) throw new Error('Réponse IA invalide — taches manquantes')
+  // Garantir la présence du raisonnement même si Claude l'omet
+  if (!parsed.raisonnement) parsed.raisonnement = ''
 
   // ── Mise en cache des durées estimées par l'IA ────────────────────────────
   if (besoinEstimation) {
