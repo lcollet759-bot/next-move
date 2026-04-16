@@ -44,7 +44,9 @@ export default function ModeFocus() {
   const location = useLocation()
 
   // ── Mode planning (lancé depuis /planning) ───────────────────────────────
-  const planningDate = location.state?.planningDate || null
+  const planningDate     = location.state?.planningDate    || null
+  // ── Mode brain dump (lancé depuis "Par où commencer ?") ──────────────────
+  const brainDumpTaches  = location.state?.brainDumpTaches || null
 
   const [planningData, setPlanningData] = useState(() => {
     if (!planningDate) return null
@@ -61,6 +63,8 @@ export default function ModeFocus() {
           dossier: { id: tp.dossierId, titre: tp.titreDossier, organisme: tp.organisme, quadrant: tp.quadrant },
         }))
     }
+    // Tâches brain dump : passées directement, déjà triées Eisenhower, pas de race condition
+    if (brainDumpTaches) return brainDumpTaches
     return dossiersAujourdhui.flatMap(dossier =>
       dossier.taches
         .filter(t => !t.done)

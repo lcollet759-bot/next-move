@@ -87,9 +87,25 @@ export default function Aujourdhui() {
     try {
       const dossiers = await analyserBrainDump(bdTexte)
       const enrichis = dossiers.map(d => ({ ...d, origine: 'vocal', quadrant: calcQuadrant(d.urgence, d.importance) }))
-      await Promise.all(enrichis.map(d => creerDossier(d)))
+
+      // creerDossier retourne le dossier complet avec ses taches (IDs générés)
+      const created = await Promise.all(enrichis.map(d => creerDossier(d)))
+
+      // Construire les tâches pour Mode Focus : tri Eisenhower, données complètes
+      // On passe les objets directement pour éviter le race condition dossiersAujourdhui
+      const brainDumpTaches = created
+        .sort((a, b) => a.quadrant - b.quadrant)
+        .flatMap(d =>
+          d.taches
+            .filter(t => !t.done)
+            .map(t => ({
+              tache:   { id: t.id, titre: t.titre, done: false },
+              dossier: { id: d.id, titre: d.titre, organisme: d.organisme ?? null, quadrant: d.quadrant },
+            }))
+        )
+
       setShowBD(false); setBdTexte('')
-      navigate('/focus')
+      navigate('/focus', { state: { brainDumpTaches } })
     } catch (e) {
       setBdError(e.message || 'Erreur lors de l\'analyse.')
     } finally {
@@ -451,7 +467,9 @@ export default function Aujourdhui() {
           display: flex; flex-direction: column;
           animation: ajOverlayIn 0.22s ease forwards;
         }
-        @keyframes ajOverlayIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+        /* Pas de transform ici — un transform crée un containing block pour les
+           position:fixed enfants (Planning.jsx) et casse leur positionnement */
+        @keyframes ajOverlayIn { from { opacity: 0; } to { opacity: 1; } }
         .aj-overlay-header {
           display: flex; align-items: center;
           padding: 14px 16px 10px;
