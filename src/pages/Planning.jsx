@@ -331,12 +331,20 @@ export default function Planning({ forceStep }) {
 
       const today  = todayISO()
       const cached = localStorage.getItem(PLANNING_KEY(today))
-      // Si navigué depuis l'app (location.key !== 'default'), ignorer le cache
-      // et forcer l'affichage du choix des heures, même si un planning existe déjà.
-      // Un chargement direct d'URL (refresh) conserve le planning en cache.
-      if (cached && location.key === 'default') {
-        try { setPlanning(JSON.parse(cached)); setLoading(false); return } catch {}
+      // Persistance : restaurer le cache au retour depuis un autre onglet.
+      // Sauter le cache uniquement si c'est une navigation fraîche depuis l'app
+      // (location.key !== 'default') ET que la session n'a pas encore chargé de planning
+      // (sessionStorage flag absent — posé après le premier chargement réussi).
+      const dejaPasse = sessionStorage.getItem('nm-planning-visite') === today
+      if (cached && (location.key === 'default' || dejaPasse)) {
+        try {
+          setPlanning(JSON.parse(cached))
+          sessionStorage.setItem('nm-planning-visite', today)
+          setLoading(false)
+          return
+        } catch {}
       }
+      sessionStorage.removeItem('nm-planning-visite')
       try {
         const p = await getPlanningForDate(today)
         if (p) {
@@ -487,6 +495,7 @@ export default function Planning({ forceStep }) {
     }
     await savePlanning(np)
     localStorage.setItem(PLANNING_KEY(today), JSON.stringify(np))
+    sessionStorage.setItem('nm-planning-visite', today)  // persistance retour onglet
     setPlanning(np)
     setHeuresPick(heuresTotales)
   }
@@ -617,8 +626,16 @@ export default function Planning({ forceStep }) {
           )}
         </div>
         <button className="plan-refresh-btn"
-          onClick={() => planning ? lancerGeneration(planning.heuresDisponibles, []) : setStep('heures')}
-          disabled={generating || step === 'validation'} title="Recalculer le planning">
+          onClick={() => {
+            const today = todayISO()
+            localStorage.removeItem(PLANNING_KEY(today))
+            sessionStorage.removeItem('nm-planning-visite')
+            setPlanning(null)
+            setProposal(null)
+            setPropDraft([])
+            setStep('heures')
+          }}
+          disabled={generating || step === 'validation'} title="Recréer le planning">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"
             style={{ animation: generating ? 'spin 1s linear infinite' : 'none' }}>
             <polyline points="23 4 23 10 17 10"/>
@@ -673,11 +690,11 @@ export default function Planning({ forceStep }) {
             </div>
           ) : (
             <div className="section plan-timeline">
-              {planning.tachesPlanifiees.map(tp => (
+              {planning.tachesPlanifiees.filter(tp => !tp.done).map(tp => (
                 <BlocTache key={tp.tacheId} tp={tp} isFirst={tp.tacheId === premiereId}
                   editingId={editingId} dureeDraft={dureeDraft}
                   onEditStart={handleEditStart} onDraftChange={setDureeDraft} onEditSave={handleEditSave}
-                  onDemarrer={() => navigate('/focus', { state: { planningDate: today } })}
+                  onDemarrer={() => navigate('/focus', { state: { planningDate: today, taches: tachesActiv } })}
                   onCheck={handleCheckTache}
                   onOpenSheet={(id) => setSheetDossierId(id)} />
               ))}
@@ -859,7 +876,7 @@ export default function Planning({ forceStep }) {
               }
             </button>
             <button className="btn btn-primary" style={{ flex: 2 }}
-              onClick={() => { console.log('[Planning] Confirmer tappé'); handleConfirmer() }}
+              onClick={handleConfirmer}
               disabled={generating}>
               Confirmer ce planning
             </button>
