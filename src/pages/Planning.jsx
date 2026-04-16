@@ -327,16 +327,14 @@ export default function Planning({ forceStep }) {
   const navigate = useNavigate()
   const location = useLocation()
 
-  // Supporte deux modes d'entrée :
-  //  1. Prop forceStep (héritage — plus utilisé directement)
-  //  2. Location state depuis navigate('/planning', { state: { from, forceStep } })
-  const fromAujourdhui  = location.state?.from === 'aujourdhui'
-  const effectiveForceStep = forceStep || location.state?.forceStep || null
+  // forceHeures : passé via location.state depuis Aujourd'hui
+  // → afficher le modal heures immédiatement, ignorer le planning en cache
+  const forceHeures = forceStep === 'heures' || location.state?.forceHeures === true
 
   // ── Données planning ────────────────────────────────────────────────────
   const [planning,     setPlanning]     = useState(null)
-  // Si effectiveForceStep fourni, on sait déjà qu'on affiche un modal — pas besoin du loader
-  const [loading,      setLoading]      = useState(!effectiveForceStep)
+  // Pas de skeleton si on force le modal heures directement
+  const [loading,      setLoading]      = useState(!forceHeures)
   const [generating,   setGenerating]   = useState(false)
   const [genError,     setGenError]     = useState(null)
 
@@ -371,11 +369,10 @@ export default function Planning({ forceStep }) {
       if (cached) setRoutines(JSON.parse(cached))
     } catch {}
 
-    if (effectiveForceStep) {
-      // Entrée directe depuis un point d'appel externe (ex : Aujourd'hui via navigate) :
-      // afficher la modal demandée immédiatement, sans charger le planning existant.
-      setStep(effectiveForceStep)
-      // Rafraîchir les routines depuis le serveur en arrière-plan
+    if (forceHeures) {
+      // Venu depuis Aujourd'hui → modal heures immédiat, planning en cache ignoré
+      setStep('heures')
+      // Routines en arrière-plan
       getRoutines()
         .then(fresh => { setRoutines(fresh); localStorage.setItem(ROUTINES_KEY, JSON.stringify(fresh)) })
         .catch(() => {})
@@ -509,8 +506,8 @@ export default function Planning({ forceStep }) {
     setStep(null)
     setProposal(null)
     setPropDraft([])
-    // Si on vient d'Aujourd'hui, retourner sur cette page
-    if (fromAujourdhui) navigate(-1)
+    // Si on vient d'Aujourd'hui (forceHeures), retourner sur cette page
+    if (forceHeures) navigate(-1)
   }
 
   // ── Sauvegarde ───────────────────────────────────────────────────────────
