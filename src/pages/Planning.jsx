@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { v4 as uuid } from 'uuid'
 import { useApp } from '../context/AppContext'
 import DossierSheet from '../components/DossierSheet'
@@ -325,11 +325,18 @@ function BlocTache({ tp, isFirst, editingId, dureeDraft, onEditStart, onDraftCha
 export default function Planning({ forceStep }) {
   const { dossiersAujourdhui, apiKey, toggleTache } = useApp()
   const navigate = useNavigate()
+  const location = useLocation()
+
+  // Supporte deux modes d'entrée :
+  //  1. Prop forceStep (héritage — plus utilisé directement)
+  //  2. Location state depuis navigate('/planning', { state: { from, forceStep } })
+  const fromAujourdhui  = location.state?.from === 'aujourdhui'
+  const effectiveForceStep = forceStep || location.state?.forceStep || null
 
   // ── Données planning ────────────────────────────────────────────────────
   const [planning,     setPlanning]     = useState(null)
-  // Si forceStep fourni, on sait déjà qu'on affiche un modal — pas besoin du loader
-  const [loading,      setLoading]      = useState(!forceStep)
+  // Si effectiveForceStep fourni, on sait déjà qu'on affiche un modal — pas besoin du loader
+  const [loading,      setLoading]      = useState(!effectiveForceStep)
   const [generating,   setGenerating]   = useState(false)
   const [genError,     setGenError]     = useState(null)
 
@@ -364,10 +371,10 @@ export default function Planning({ forceStep }) {
       if (cached) setRoutines(JSON.parse(cached))
     } catch {}
 
-    if (forceStep) {
-      // Entrée directe depuis un point d'appel externe (ex : Aujourd'hui) :
+    if (effectiveForceStep) {
+      // Entrée directe depuis un point d'appel externe (ex : Aujourd'hui via navigate) :
       // afficher la modal demandée immédiatement, sans charger le planning existant.
-      setStep(forceStep)
+      setStep(effectiveForceStep)
       // Rafraîchir les routines depuis le serveur en arrière-plan
       getRoutines()
         .then(fresh => { setRoutines(fresh); localStorage.setItem(ROUTINES_KEY, JSON.stringify(fresh)) })
@@ -502,6 +509,8 @@ export default function Planning({ forceStep }) {
     setStep(null)
     setProposal(null)
     setPropDraft([])
+    // Si on vient d'Aujourd'hui, retourner sur cette page
+    if (fromAujourdhui) navigate(-1)
   }
 
   // ── Sauvegarde ───────────────────────────────────────────────────────────
@@ -608,7 +617,15 @@ export default function Planning({ forceStep }) {
     <div className="page">
       {/* Header */}
       <div className="page-header plan-header">
-        <div>
+        <div style={{ flex: 1 }}>
+          {fromAujourdhui && (
+            <button className="plan-back-btn" onClick={() => navigate(-1)}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="15 18 9 12 15 6"/>
+              </svg>
+              Retour
+            </button>
+          )}
           <p className="aj-date">{todayLabel()}</p>
           <h1 className="plan-title">Planning du jour</h1>
           {planning && step !== 'validation' && (
@@ -797,6 +814,13 @@ export default function Planning({ forceStep }) {
         .plan-header { display: flex; align-items: flex-start; justify-content: space-between; padding-bottom: 16px; }
         .plan-title  { font-size: 28px; font-weight: 700; color: var(--text); letter-spacing: -0.8px; }
         .plan-sub    { font-size: 13px; color: var(--text-muted); margin-top: 4px; }
+        .plan-back-btn {
+          display: inline-flex; align-items: center; gap: 4px;
+          border: none; background: none; cursor: pointer;
+          font-size: 13px; color: var(--text-muted); font-family: inherit;
+          padding: 0 0 10px; transition: color 0.15s;
+        }
+        .plan-back-btn:hover { color: var(--text); }
         .plan-refresh-btn {
           margin-top: 8px; flex-shrink: 0; border: none;
           background: var(--gray-light); color: var(--text-muted);
