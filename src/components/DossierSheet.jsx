@@ -18,10 +18,10 @@ const ETAT_LABELS = {
   clos:            'Clôturé',
 }
 const Q_LABELS = {
-  1: 'Q1 — Urgent · Important',
-  2: 'Q2 — Important',
-  3: 'Q3 — Urgent',
-  4: 'Q4 — Basse priorité',
+  1: 'Urgent',
+  2: 'Important',
+  3: 'À expédier',
+  4: 'Plus tard',
 }
 const Q_COLORS = { 1: '#C0392B', 2: '#1C3829', 3: '#B45309', 4: '#B5A898' }
 

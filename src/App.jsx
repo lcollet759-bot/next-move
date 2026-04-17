@@ -75,7 +75,7 @@ function WeeklyReviewModal({ dossiers, onClose, mettreAJourDossier, supprimerDos
               </svg>
             </div>
             <p style={{ fontSize: 14, color: 'var(--text-secondary)', marginBottom: 20 }}>
-              Beau travail — liste Q4 traitée.
+              Beau travail — liste "Plus tard" traitée.
             </p>
             <button className="btn btn-primary btn-full" onClick={onClose}>Fermer</button>
           </div>
