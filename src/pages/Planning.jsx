@@ -48,6 +48,8 @@ function taskAccent(tp) {
          tp.quadrant === 3 ? '#B45309' : '#B5A898'
 }
 
+const Q_BADGE_LABELS = { 1: 'Urgent', 2: 'Important', 3: 'À expédier', 4: 'Plus tard' }
+
 const Q_STYLE = {
   1: { bg: '#fef2f2', accent: '#C0392B' },
   2: { bg: '#E8F0EA', accent: '#1C3829' },
@@ -170,7 +172,7 @@ function BlocTache({ tp, editingId, dureeDraft, onEditStart, onDraftChange, onEd
           </button>
         )}
         <span className="bloc-badge" style={{ background: style.accent, color:'#fff' }}>
-          {tp.isRoutine ? 'Routine' : `Q${tp.quadrant}`}
+          {tp.isRoutine ? 'Routine' : (Q_BADGE_LABELS[tp.quadrant] || 'Plus tard')}
         </span>
       </div>
       <p className="bloc-titre">{tp.titreTache}</p>
