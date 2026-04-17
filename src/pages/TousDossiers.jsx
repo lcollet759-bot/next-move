@@ -31,8 +31,8 @@ function DossierGridCard({ dossier, onClick }) {
     <button className="td-card" onClick={onClick}>
       <div className="td-card-top">
         <span className="td-dot" style={{ background: color }} />
-        {dossier.etat === 'attente_externe' && <span className="td-badge td-badge-attente">Att.</span>}
-        {dossier.etat === 'bloque'          && <span className="td-badge td-badge-bloque">Blq.</span>}
+        {dossier.etat === 'attente_externe' && <span className="td-badge td-badge-attente">Retour</span>}
+        {dossier.etat === 'bloque'          && <span className="td-badge td-badge-bloque">Bloqué</span>}
       </div>
       <p className="td-titre">{dossier.titre}</p>
       {dossier.organisme && <p className="td-org">{dossier.organisme}</p>}

@@ -5,17 +5,17 @@ import { haptic } from '../utils/haptic'
 
 // ── Constantes (miroir de DossierDetail) ──────────────────────────────────────
 const ETATS = [
-  { key: 'actionnable',     label: 'Actionnable', cls: 'badge-actionnable' },
-  { key: 'attente_externe', label: 'En attente',  cls: 'badge-attente'     },
-  { key: 'bloque',          label: 'Bloqué',      cls: 'badge-bloque'      },
-  { key: 'surveille',       label: 'Surveillé',   cls: 'badge-surveille'   },
+  { key: 'actionnable',     label: "À traiter",           cls: 'badge-actionnable' },
+  { key: 'attente_externe', label: "J'attends un retour", cls: 'badge-attente'     },
+  { key: 'bloque',          label: "Bloqué",              cls: 'badge-bloque'      },
+  { key: 'surveille',       label: "À l'œil",             cls: 'badge-surveille'   },
 ]
 const ETAT_LABELS = {
-  actionnable:     'Actionnable',
-  attente_externe: 'En attente',
-  bloque:          'Bloqué',
-  surveille:       'Surveillé',
-  clos:            'Clôturé',
+  actionnable:     "À traiter",
+  attente_externe: "J'attends un retour",
+  bloque:          "Bloqué",
+  surveille:       "À l'œil",
+  clos:            "Terminé",
 }
 const Q_LABELS = {
   1: 'Urgent',
