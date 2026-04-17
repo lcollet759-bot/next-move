@@ -72,7 +72,7 @@ export default function Aujourdhui() {
         </div>
         <span className="aj-logo-name">Next Move</span>
       </div>
-      <div className="aj-avatar">L</div>
+      <button className="aj-avatar" onClick={() => navigate('/reglages')} aria-label="Réglages">L</button>
     </header>
   )
 
@@ -317,7 +317,12 @@ const ajCSS = `
     font-weight: 700;
     flex-shrink: 0;
     letter-spacing: 0;
+    border: none;
+    cursor: pointer;
+    font-family: inherit;
+    transition: background 0.15s, transform 0.12s;
   }
+  .aj-avatar:active { background: #a84e2d; transform: scale(0.93); }
 
   /* ── Date bar ────────────────────────────────────────────────────────────── */
   .aj-date-bar {

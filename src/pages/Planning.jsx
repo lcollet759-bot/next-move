@@ -193,6 +193,8 @@ export default function Planning({ forceStep }) {
   const [step,         setStep]        = useState(null)
   const [heuresPick,   setHeuresPick]  = useState(null)
   const [selectedRIds, setSelectedRIds]= useState([])
+  const [heuresCustom, setHeuresCustom]= useState(false)
+  const [heuresVal,    setHeuresVal]   = useState('')
 
   const [proposal,  setProposal]  = useState(null)
   const [propDraft, setPropDraft] = useState([])
@@ -508,16 +510,55 @@ export default function Planning({ forceStep }) {
 
             <div className="pla-heures-grid">
               {[
-                { h: 0.5, label: '30min' },
-                { h: 1,   label: '1h'    },
-                { h: 2,   label: '2h'    },
+                { h: 0.5, label: '30min'   },
+                { h: 1,   label: '1h'      },
+                { h: 2,   label: '2h'      },
                 { h: 8,   label: 'Journée' },
               ].map(({ h, label }) => (
                 <button key={h} className="pla-heure-btn" onClick={() => handleHeures(h)}>
                   <span className="pla-heure-val">{label}</span>
                 </button>
               ))}
+              <button
+                className="pla-heure-btn pla-heure-autre"
+                onClick={() => { setHeuresCustom(true); setHeuresVal('') }}
+              >
+                <span className="pla-heure-val">Autre</span>
+              </button>
             </div>
+
+            {heuresCustom && (
+              <div className="pla-custom-wrap">
+                <p className="pla-custom-label">Nombre d'heures disponibles :</p>
+                <div className="pla-custom-row">
+                  <input
+                    type="number"
+                    className="input pla-custom-input"
+                    min="0.5" max="16" step="0.5"
+                    placeholder="ex : 3"
+                    value={heuresVal}
+                    onChange={e => setHeuresVal(e.target.value)}
+                    autoFocus
+                  />
+                  <button
+                    className="btn btn-primary pla-custom-ok"
+                    disabled={!heuresVal || parseFloat(heuresVal) <= 0}
+                    onClick={() => {
+                      handleHeures(parseFloat(heuresVal))
+                      setHeuresCustom(false); setHeuresVal('')
+                    }}
+                  >
+                    OK →
+                  </button>
+                </div>
+                <button
+                  className="pla-custom-cancel"
+                  onClick={() => { setHeuresCustom(false); setHeuresVal('') }}
+                >
+                  ← Annuler
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -911,6 +952,28 @@ const CSS = `
   .pla-heure-btn:hover  { border-color: #1C3829; background: #E8F0EA; }
   .pla-heure-btn:active { transform: scale(0.96); opacity: 0.9; }
   .pla-heure-val { font-size: 22px; font-weight: 700; color: #1C3829; }
+  .pla-heure-autre { grid-column: 1 / -1; padding: 16px 12px; }
+  .pla-heure-autre .pla-heure-val { font-size: 17px; color: #A09080; }
+  .pla-heure-autre:hover .pla-heure-val { color: #1C3829; }
+
+  .pla-custom-wrap {
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid #EDE9E2;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .pla-custom-label { font-size: 13px; color: #A09080; margin: 0; }
+  .pla-custom-row { display: flex; gap: 8px; }
+  .pla-custom-input { flex: 1; }
+  .pla-custom-ok { flex-shrink: 0; padding: 10px 18px; font-size: 14px; }
+  .pla-custom-cancel {
+    background: none; border: none; color: #A09080; font-size: 13px;
+    font-family: inherit; cursor: pointer; padding: 4px 0; text-align: left;
+    width: fit-content; transition: color 0.15s;
+  }
+  .pla-custom-cancel:active { color: #2A1F14; }
 
   /* Routines step */
   .pla-routine-check {
