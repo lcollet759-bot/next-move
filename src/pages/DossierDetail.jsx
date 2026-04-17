@@ -7,18 +7,18 @@ import { haptic } from '../utils/haptic'
 
 // ── Constantes ────────────────────────────────────────────────────────────────
 const ETATS = [
-  { key: 'actionnable',     label: 'Actionnable',       desc: 'À traiter maintenant' },
-  { key: 'attente_externe', label: 'En attente externe', desc: 'Attente d\'un retour tiers' },
-  { key: 'bloque',          label: 'Bloqué',             desc: 'Obstacle identifié' },
-  { key: 'surveille',       label: 'Surveillé',          desc: 'À suivre sans urgence' },
+  { key: 'actionnable',     label: "À traiter",           desc: 'À traiter maintenant' },
+  { key: 'attente_externe', label: "J'attends un retour", desc: "Attente d'un retour tiers" },
+  { key: 'bloque',          label: "Bloqué",              desc: 'Obstacle identifié' },
+  { key: 'surveille',       label: "À l'œil",             desc: 'À suivre sans urgence' },
 ]
 
 const ETATS_LABELS = {
-  actionnable:     'Actionnable',
-  attente_externe: 'En attente',
-  bloque:          'Bloqué',
-  surveille:       'Surveillé',
-  clos:            'Clôturé',
+  actionnable:     "À traiter",
+  attente_externe: "J'attends un retour",
+  bloque:          "Bloqué",
+  surveille:       "À l'œil",
+  clos:            "Terminé",
 }
 
 const Q_LABELS = {
