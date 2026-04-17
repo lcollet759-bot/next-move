@@ -6,7 +6,7 @@ import EtatBadge from '../components/EtatBadge'
 import QuadrantBadge from '../components/QuadrantBadge'
 import { haptic } from '../utils/haptic'
 
-const MODES = ['Texte', 'Document', 'Brain dump']
+const MODES = ['Dicter', 'Écrire', 'Document', 'Brain dump']
 
 function calcQuadrant(u, i) {
   if (u && i)   return 1
@@ -47,12 +47,73 @@ async function readFileAsBase64(file) {
   })
 }
 
+// Mode icons
+const IconMic = () => (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+    <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+    <line x1="12" y1="19" x2="12" y2="23"/>
+    <line x1="8" y1="23" x2="16" y2="23"/>
+  </svg>
+)
+const IconPencil = () => (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/>
+  </svg>
+)
+const IconFile = () => (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+    <polyline points="14 2 14 8 20 8"/>
+    <line x1="16" y1="13" x2="8" y2="13"/>
+    <line x1="16" y1="17" x2="8" y2="17"/>
+  </svg>
+)
+const IconBubble = () => (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+  </svg>
+)
+
+const MODE_CONFIG = [
+  { id: 'Dicter',     label: 'Dicter',   icon: <IconMic /> },
+  { id: 'Écrire',     label: 'Écrire',   icon: <IconPencil /> },
+  { id: 'Document',   label: 'Document', icon: <IconFile /> },
+  { id: 'Brain dump', label: 'Brain',    icon: <IconBubble /> },
+]
+
+const MicBigSvg = () => (
+  <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+    <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+    <line x1="12" y1="19" x2="12" y2="23"/>
+    <line x1="8" y1="23" x2="16" y2="23"/>
+  </svg>
+)
+const MicSmallSvg = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+    <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+    <line x1="12" y1="19" x2="12" y2="23"/>
+    <line x1="8" y1="23" x2="16" y2="23"/>
+  </svg>
+)
+const BackSvg = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="15 18 9 12 15 6"/>
+  </svg>
+)
+
 export default function Capturer() {
   const { creerDossier, apiKey } = useApp()
   const navigate = useNavigate()
-  const [mode, setMode] = useState('Texte')
+  const [mode, setMode] = useState('Écrire')
 
-  // Brain dump — textarea, dictée via clavier natif
+  // Speech recognition
+  const [isListening, setIsListening]   = useState(false)
+  const recognitionRef                   = useRef(null)
+
+  // Brain dump
   const [transcript, setTranscript] = useState('')
   const brainRef = useRef(null)
 
@@ -71,6 +132,40 @@ export default function Capturer() {
   const [proposition,     setProposition]     = useState(null)
   const [brainDumpResult, setBrainDumpResult] = useState(null)
   const [saving,          setSaving]          = useState(false)
+
+  // ── Speech recognition ────────────────────────────────────────────────────
+  const startListening = useCallback((onResult) => {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition
+    if (!SR) { setError('Dictée vocale non supportée sur ce navigateur.'); return }
+    const rec = new SR()
+    rec.lang = 'fr-FR'
+    rec.continuous = true
+    rec.interimResults = false
+    rec.onresult = (e) => {
+      const result = e.results[e.resultIndex]
+      if (result.isFinal) onResult(result[0].transcript.trim())
+    }
+    rec.onerror = () => setIsListening(false)
+    rec.onend   = () => setIsListening(false)
+    recognitionRef.current = rec
+    rec.start()
+    setIsListening(true)
+  }, [])
+
+  const stopListening = useCallback(() => {
+    recognitionRef.current?.stop()
+    setIsListening(false)
+  }, [])
+
+  const toggleDicter = useCallback(() => {
+    if (isListening) stopListening()
+    else startListening(text => setTexte(prev => prev ? prev + ' ' + text : text))
+  }, [isListening, startListening, stopListening])
+
+  const toggleBrainMic = useCallback(() => {
+    if (isListening) stopListening()
+    else startListening(text => setTranscript(prev => prev ? prev + ' ' + text : text))
+  }, [isListening, startListening, stopListening])
 
   // ── Document ──────────────────────────────────────────────────────────────
   const handleFile = useCallback(async (file) => {
@@ -103,7 +198,8 @@ export default function Capturer() {
         let result
         if (mode === 'Document' && docBase64) result = await analyserDocument(docBase64, docMime)
         else result = await analyserCapture(input)
-        setProposition({ ...result, origine: mode.toLowerCase(), quadrant: calcQuadrant(result.urgence, result.importance) })
+        const origine = mode === 'Écrire' ? 'texte' : mode.toLowerCase()
+        setProposition({ ...result, origine, quadrant: calcQuadrant(result.urgence, result.importance) })
       }
     } catch (e) { setError(e.message) }
     finally { setLoading(false) }
@@ -113,7 +209,8 @@ export default function Capturer() {
     if (!proposition) return
     setSaving(true)
     try {
-      const dossier = await creerDossier({ ...proposition, origine: mode.toLowerCase() })
+      const origine = mode === 'Écrire' ? 'texte' : mode.toLowerCase()
+      const dossier = await creerDossier({ ...proposition, origine })
       haptic('success'); navigate(`/dossiers/${dossier.id}`)
     } catch (e) { haptic('error'); setError(e.message) }
     finally { setSaving(false) }
@@ -124,7 +221,7 @@ export default function Capturer() {
     setSaving(true); setError('')
     try {
       await Promise.all(brainDumpResult.map(d => creerDossier(d)))
-      haptic('success'); navigate('/aujourdhui')
+      haptic('success'); navigate('/')
     } catch (e) { haptic('error'); setError(e.message) }
     finally { setSaving(false) }
   }, [brainDumpResult, creerDossier, navigate])
@@ -133,16 +230,30 @@ export default function Capturer() {
     setProposition(null); setBrainDumpResult(null)
     setTexte(''); setTranscript('')
     setDocFile(null); setDocPreview(null); setDocBase64(null); setError('')
+    if (isListening) stopListening()
   }
+
+  const changeMode = (m) => { setMode(m); reset() }
 
   // ── Vue Brain dump results ────────────────────────────────────────────────
   if (brainDumpResult) {
     return (
       <div className="page">
-        <div className="page-header">
-          <h1 className="page-title">Brain dump</h1>
-          <p className="page-subtitle">{brainDumpResult.length} dossier{brainDumpResult.length > 1 ? 's' : ''} identifié{brainDumpResult.length > 1 ? 's' : ''}</p>
-        </div>
+        <header className="cap-header">
+          <div className="cap-header-top">
+            <button className="cap-back" onClick={() => { setBrainDumpResult(null) }} aria-label="Retour">
+              <BackSvg />
+            </button>
+            <div className="cap-brand">
+              <span className="cap-logo-mark">»</span>
+              <span className="cap-brand-name">Capturer</span>
+            </div>
+            <div style={{ width: 40 }} />
+          </div>
+          <p className="cap-header-sub" style={{ fontSize: 16, fontWeight: 500, opacity: 0.8 }}>
+            {brainDumpResult.length} dossier{brainDumpResult.length > 1 ? 's' : ''} identifié{brainDumpResult.length > 1 ? 's' : ''}
+          </p>
+        </header>
         <div className="section">
           {brainDumpResult.map((d, i) => (
             <div key={i} className="card" style={{ marginBottom: 10 }}>
@@ -165,7 +276,7 @@ export default function Capturer() {
               )}
             </div>
           ))}
-          {error && <p className="error-msg">{error}</p>}
+          {error && <p className="cap-error">{error}</p>}
           <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
             <button className="btn btn-ghost" style={{ flex: 1 }} onClick={reset}>← Recommencer</button>
             <button className="btn btn-primary" style={{ flex: 2 }} onClick={toutCreer} disabled={saving}>
@@ -173,6 +284,7 @@ export default function Capturer() {
             </button>
           </div>
         </div>
+        <CAP_STYLES />
       </div>
     )
   }
@@ -181,10 +293,21 @@ export default function Capturer() {
   if (proposition) {
     return (
       <div className="page">
-        <div className="page-header">
-          <h1 className="page-title">Proposition</h1>
-          <p className="page-subtitle">Vérifiez et confirmez le dossier</p>
-        </div>
+        <header className="cap-header">
+          <div className="cap-header-top">
+            <button className="cap-back" onClick={reset} aria-label="Modifier">
+              <BackSvg />
+            </button>
+            <div className="cap-brand">
+              <span className="cap-logo-mark">»</span>
+              <span className="cap-brand-name">Capturer</span>
+            </div>
+            <div style={{ width: 40 }} />
+          </div>
+          <p className="cap-header-sub" style={{ fontSize: 16, fontWeight: 500, opacity: 0.8 }}>
+            Vérifiez et confirmez
+          </p>
+        </header>
         <div className="section">
           <div className="card" style={{ marginBottom: 12 }}>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
@@ -215,7 +338,7 @@ export default function Capturer() {
               </div>
             )}
           </div>
-          {error && <p className="error-msg">{error}</p>}
+          {error && <p className="cap-error">{error}</p>}
           <div style={{ display: 'flex', gap: 10 }}>
             <button className="btn btn-ghost" style={{ flex: 1 }} onClick={reset}>← Modifier</button>
             <button className="btn btn-primary" style={{ flex: 2 }} onClick={confirmer} disabled={saving}>
@@ -223,53 +346,92 @@ export default function Capturer() {
             </button>
           </div>
         </div>
+        <CAP_STYLES />
         <style>{`.prop-tache { font-size: 14px; padding: 5px 0; color: var(--text); border-bottom: 1px solid var(--border); } .prop-tache:last-of-type { border-bottom: none; }`}</style>
       </div>
     )
   }
 
   // ── Vue principale ────────────────────────────────────────────────────────
+  const subtitle = mode === 'Brain dump' ? 'Vide ta tête.' : 'Dis-moi tout.'
+
   const canAnalyse = !loading &&
-    (mode === 'Brain dump' ? transcript.trim() : true) &&
-    (mode === 'Texte'      ? texte.trim()      : true) &&
-    (mode === 'Document'   ? !!docBase64        : true)
+    (mode === 'Brain dump'                  ? !!transcript.trim() : true) &&
+    (mode === 'Écrire' || mode === 'Dicter' ? !!texte.trim()      : true) &&
+    (mode === 'Document'                    ? !!docBase64          : true)
 
   return (
     <div className="page">
-      <div className="page-header">
-        <h1 className="page-title">Capturer</h1>
-        <p className="page-subtitle">Dictez, écrivez ou importez un document</p>
-      </div>
-
-      <div className="section">
-        <div className="mode-tabs">
-          {MODES.map(m => (
-            <button key={m} className={`mode-tab ${mode === m ? 'mode-tab-active' : ''}`} onClick={() => { setMode(m); reset() }}>
-              {m}
+      <header className="cap-header">
+        <div className="cap-header-top">
+          <button className="cap-back" onClick={() => navigate(-1)} aria-label="Retour">
+            <BackSvg />
+          </button>
+          <div className="cap-brand">
+            <span className="cap-logo-mark">»</span>
+            <span className="cap-brand-name">Capturer</span>
+          </div>
+          <div style={{ width: 40 }} />
+        </div>
+        <p className="cap-header-sub">{subtitle}</p>
+        <div className="cap-mode-row">
+          {MODE_CONFIG.map(({ id, label, icon }) => (
+            <button
+              key={id}
+              className={`cap-mode-btn${mode === id ? ' cap-mode-active' : ''}`}
+              onClick={() => changeMode(id)}
+            >
+              <span className="cap-mode-icon">{icon}</span>
+              <span className="cap-mode-label">{label}</span>
             </button>
           ))}
         </div>
-      </div>
+      </header>
 
       <div className="section">
-        {/* ── TEXTE ── */}
-        {mode === 'Texte' && (
+
+        {/* ── DICTER ── */}
+        {mode === 'Dicter' && (
           <div className="cap-panel">
-            <div className="textarea-wrap">
+            <div className="cap-dicter-center">
+              <div className="cap-mic-ring">
+                <button
+                  className={`cap-mic-btn${isListening ? ' cap-mic-listening' : ''}`}
+                  onClick={toggleDicter}
+                  aria-label={isListening ? 'Arrêter la dictée' : 'Commencer la dictée'}
+                >
+                  <MicBigSvg />
+                </button>
+              </div>
+              <p className="cap-dicter-hint">
+                {isListening
+                  ? "J'écoute… Appuyez à nouveau pour arrêter."
+                  : texte
+                    ? null
+                    : 'Appuyez sur le micro pour commencer à dicter.'}
+              </p>
+            </div>
+            {texte && (
+              <div className="cap-dicter-result">
+                <p className="cap-dicter-text">{texte}</p>
+                <button className="btn btn-ghost btn-sm" style={{ alignSelf: 'flex-end' }} onClick={() => setTexte('')}>Effacer</button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── ÉCRIRE ── */}
+        {mode === 'Écrire' && (
+          <div className="cap-panel">
+            <div className="cap-textarea-wrap">
               <textarea
                 className="input textarea"
                 placeholder="Décrivez la situation… Ex : J'ai reçu un courrier de la SUVA réclamant un paiement de 340 CHF avant le 15 avril."
                 value={texte}
                 onChange={e => setTexte(e.target.value)}
-                style={{ minHeight: 160, paddingBottom: 36 }}
+                style={{ minHeight: 160, paddingBottom: 28 }}
               />
-              <span className="mic-hint" title="Utilisez le micro 🎤 de votre clavier pour dicter">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                  <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
-                  <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
-                  <line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/>
-                </svg>
-              </span>
+              <span className="cap-char-count">{texte.length} car.</span>
             </div>
           </div>
         )}
@@ -301,14 +463,16 @@ export default function Capturer() {
                     <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
                     <circle cx="12" cy="13" r="4"/>
                   </svg>
-                  <span>Prendre une photo</span><span className="doc-btn-sub">Appareil photo</span>
+                  <span>Prendre une photo</span>
+                  <span className="doc-btn-sub">Appareil photo</span>
                 </button>
                 <button className="doc-btn" onClick={() => fileRef.current?.click()}>
                   <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
                     <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
                     <polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
                   </svg>
-                  <span>Importer un fichier</span><span className="doc-btn-sub">Image ou PDF</span>
+                  <span>Importer un fichier</span>
+                  <span className="doc-btn-sub">Image ou PDF</span>
                 </button>
               </div>
             )}
@@ -318,26 +482,22 @@ export default function Capturer() {
         {/* ── BRAIN DUMP ── */}
         {mode === 'Brain dump' && (
           <div className="cap-panel">
-            <div className="brain-dump-info">
-              <p className="brain-dump-title">Videz votre esprit</p>
-              <p className="brain-dump-desc">Tapez ou dictez librement — factures, démarches, projets… L'IA découpe en dossiers distincts.</p>
-            </div>
-            <div className="textarea-wrap">
+            <div className="cap-brain-wrap">
               <textarea
                 ref={brainRef}
                 className="input textarea"
-                placeholder="Tout ce qui vous passe par la tête… utilisez 🎤 de votre clavier pour dicter."
+                placeholder="Balance tout ce qui te passe par la tête… factures, démarches, projets, rendez-vous…"
                 value={transcript}
                 onChange={e => setTranscript(e.target.value)}
-                style={{ minHeight: 140, paddingBottom: 36 }}
+                style={{ minHeight: 220, paddingBottom: 52 }}
               />
-              <span className="mic-hint" title="Utilisez le micro 🎤 de votre clavier pour dicter">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                  <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
-                  <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
-                  <line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/>
-                </svg>
-              </span>
+              <button
+                className={`cap-brain-mic${isListening ? ' cap-brain-mic-active' : ''}`}
+                onClick={toggleBrainMic}
+                title={isListening ? 'Arrêter la dictée' : 'Dicter'}
+              >
+                <MicSmallSvg />
+              </button>
             </div>
             {transcript && (
               <button className="btn btn-ghost btn-sm" style={{ alignSelf: 'flex-end' }} onClick={() => setTranscript('')}>Effacer</button>
@@ -345,12 +505,17 @@ export default function Capturer() {
           </div>
         )}
 
-        {error && <p className="error-msg">{error}</p>}
+        {error && <p className="cap-error">{error}</p>}
 
-        <button className="btn btn-primary btn-full btn-lg" style={{ marginTop: 16 }} onClick={analyser} disabled={!canAnalyse}>
+        <button
+          className="btn btn-primary btn-full btn-lg"
+          style={{ marginTop: 16 }}
+          onClick={analyser}
+          disabled={!canAnalyse}
+        >
           {loading
             ? <><div className="spinner" style={{ width: 18, height: 18, borderWidth: 2, borderTopColor: 'white' }} /> Analyse en cours…</>
-            : mode === 'Brain dump' ? 'Organiser avec l\'IA' : 'Analyser avec l\'IA'
+            : mode === 'Brain dump' ? "Organiser avec l'IA" : "Analyser avec l'IA"
           }
         </button>
 
@@ -361,32 +526,228 @@ export default function Capturer() {
         )}
       </div>
 
-      <style>{`
-        .mode-tabs { display: flex; background: var(--gray-light); border-radius: var(--radius-sm); padding: 3px; gap: 2px; margin-bottom: 16px; }
-        .mode-tab { flex: 1; padding: 8px 4px; border: none; background: transparent; border-radius: 7px; font-size: 12px; font-weight: 500; color: var(--text-muted); transition: all 0.15s; white-space: nowrap; }
-        .mode-tab-active { background: var(--surface); color: var(--green); box-shadow: var(--shadow); }
-        .cap-panel { display: flex; flex-direction: column; align-items: center; gap: 12px; width: 100%; }
-        .textarea-wrap { position: relative; width: 100%; }
-        .textarea-wrap .input { width: 100%; }
-        .mic-hint {
-          position: absolute; bottom: 10px; right: 12px;
-          color: var(--text-muted); opacity: 0.5;
-          pointer-events: none;
-          display: flex; align-items: center;
-        }
-        .brain-dump-info { width: 100%; padding: 14px 16px; background: var(--green-light); border-radius: var(--radius); border-left: 3px solid var(--green); }
-        .brain-dump-title { font-size: 14px; font-weight: 600; color: var(--green); margin-bottom: 4px; }
-        .brain-dump-desc { font-size: 13px; color: var(--text-secondary); line-height: 1.5; }
-        .doc-import-panel { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; width: 100%; }
-        .doc-btn { min-height: 140px; border: 2px dashed var(--border); border-radius: var(--radius); background: var(--gray-light); color: var(--green); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; font-size: 14px; font-weight: 500; cursor: pointer; transition: border-color 0.15s, background 0.15s; padding: 16px 12px; text-align: center; }
-        .doc-btn:hover { border-color: var(--green); background: var(--green-light); }
-        .doc-btn-sub { font-size: 11px; color: var(--text-muted); font-weight: 400; }
-        .doc-preview { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 10px; }
-        .doc-img { width: 100%; max-height: 260px; object-fit: contain; border-radius: var(--radius); border: 1px solid var(--border); }
-        .doc-pdf-placeholder { width: 100%; min-height: 120px; background: var(--gray-light); border-radius: var(--radius); border: 1px solid var(--border); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 20px; }
-        .doc-filename { font-size: 13px; color: var(--text-muted); text-align: center; word-break: break-all; }
-        .error-msg { color: var(--red); font-size: 13px; background: var(--red-light); padding: 10px 12px; border-radius: var(--radius-sm); margin-top: 8px; width: 100%; }
-      `}</style>
+      <CAP_STYLES />
     </div>
+  )
+}
+
+function CAP_STYLES() {
+  return (
+    <style>{`
+      /* ── Header ── */
+      .cap-header {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        background: #1C3829;
+        color: #fff;
+        padding: 14px 16px 0;
+        flex-shrink: 0;
+      }
+      .cap-header-top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 10px;
+      }
+      .cap-back {
+        width: 40px; height: 40px;
+        display: flex; align-items: center; justify-content: center;
+        background: transparent;
+        border: none;
+        color: rgba(255,255,255,0.75);
+        cursor: pointer;
+        border-radius: 10px;
+        transition: background 0.15s;
+      }
+      .cap-back:active { background: rgba(255,255,255,0.1); }
+      .cap-brand {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+      }
+      .cap-logo-mark {
+        font-size: 20px;
+        font-weight: 700;
+        color: #C4623A;
+        letter-spacing: -1px;
+        line-height: 1;
+      }
+      .cap-brand-name {
+        font-size: 16px;
+        font-weight: 600;
+        color: #fff;
+        letter-spacing: 0.3px;
+      }
+      .cap-header-sub {
+        font-size: 24px;
+        font-weight: 700;
+        color: rgba(255,255,255,0.95);
+        margin: 0 0 14px;
+        letter-spacing: -0.4px;
+        line-height: 1.15;
+      }
+
+      /* ── Mode row ── */
+      .cap-mode-row {
+        display: flex;
+        justify-content: space-between;
+        padding-bottom: 14px;
+        gap: 8px;
+      }
+      .cap-mode-btn {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 5px;
+        padding: 10px 4px;
+        border: none;
+        border-radius: 12px;
+        background: rgba(255,255,255,0.08);
+        color: rgba(255,255,255,0.45);
+        cursor: pointer;
+        transition: background 0.15s, color 0.15s;
+      }
+      .cap-mode-btn.cap-mode-active {
+        background: rgba(255,255,255,0.18);
+        color: #fff;
+      }
+      .cap-mode-icon { display: flex; align-items: center; justify-content: center; }
+      .cap-mode-label {
+        font-size: 9px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        line-height: 1;
+      }
+
+      /* ── Panel ── */
+      .cap-panel {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 12px;
+        width: 100%;
+      }
+
+      /* ── Dicter ── */
+      .cap-dicter-center {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 22px;
+        padding: 36px 0 12px;
+        width: 100%;
+      }
+      .cap-mic-ring {
+        width: 106px;
+        height: 106px;
+        border-radius: 50%;
+        background: #E8F0EA;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+      }
+      .cap-mic-btn {
+        width: 80px;
+        height: 80px;
+        border-radius: 50%;
+        background: #1C3829;
+        border: none;
+        color: #fff;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: background 0.15s, transform 0.1s;
+        box-shadow: 0 4px 16px rgba(28,56,41,0.25);
+      }
+      .cap-mic-btn:active { transform: scale(0.93); }
+      .cap-mic-btn.cap-mic-listening {
+        background: #C4623A;
+        animation: cap-pulse 1.3s ease-in-out infinite;
+      }
+      @keyframes cap-pulse {
+        0%, 100% { box-shadow: 0 0 0 0 rgba(196,98,58,0.45); }
+        50%       { box-shadow: 0 0 0 16px rgba(196,98,58,0); }
+      }
+      .cap-dicter-hint {
+        font-size: 14px;
+        color: var(--text-muted);
+        text-align: center;
+        line-height: 1.55;
+        max-width: 220px;
+        min-height: 40px;
+      }
+      .cap-dicter-result {
+        width: 100%;
+        background: #fff;
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 14px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .cap-dicter-text {
+        font-size: 14px;
+        color: var(--text);
+        line-height: 1.65;
+        margin: 0;
+      }
+
+      /* ── Écrire ── */
+      .cap-textarea-wrap { position: relative; width: 100%; }
+      .cap-textarea-wrap .input { width: 100%; background: #fff; }
+      .cap-char-count {
+        position: absolute;
+        bottom: 10px;
+        right: 12px;
+        font-size: 11px;
+        color: var(--text-muted);
+        pointer-events: none;
+      }
+
+      /* ── Brain dump ── */
+      .cap-brain-wrap { position: relative; width: 100%; }
+      .cap-brain-wrap .input { width: 100%; background: #fff; }
+      .cap-brain-mic {
+        position: absolute;
+        bottom: 12px;
+        right: 12px;
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        border: none;
+        background: #1C3829;
+        color: #fff;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: background 0.15s, transform 0.1s;
+        box-shadow: 0 2px 8px rgba(28,56,41,0.2);
+      }
+      .cap-brain-mic:active { transform: scale(0.92); }
+      .cap-brain-mic.cap-brain-mic-active {
+        background: #C4623A;
+        animation: cap-pulse 1.3s ease-in-out infinite;
+      }
+
+      /* ── Document ── */
+      .doc-import-panel { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; width: 100%; }
+      .doc-btn { min-height: 140px; border: 2px dashed var(--border); border-radius: var(--radius); background: var(--gray-light); color: var(--green); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; font-size: 14px; font-weight: 500; cursor: pointer; transition: border-color 0.15s, background 0.15s; padding: 16px 12px; text-align: center; }
+      .doc-btn:hover { border-color: var(--green); background: var(--green-light); }
+      .doc-btn-sub { font-size: 11px; color: var(--text-muted); font-weight: 400; }
+      .doc-preview { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+      .doc-img { width: 100%; max-height: 260px; object-fit: contain; border-radius: var(--radius); border: 1px solid var(--border); }
+      .doc-pdf-placeholder { width: 100%; min-height: 120px; background: var(--gray-light); border-radius: var(--radius); border: 1px solid var(--border); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 20px; }
+      .doc-filename { font-size: 13px; color: var(--text-muted); text-align: center; word-break: break-all; }
+
+      /* ── Common ── */
+      .cap-error { color: var(--red); font-size: 13px; background: var(--red-light); padding: 10px 12px; border-radius: var(--radius-sm); margin-top: 8px; width: 100%; }
+    `}</style>
   )
 }
