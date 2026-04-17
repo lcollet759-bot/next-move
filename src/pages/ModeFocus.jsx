@@ -8,194 +8,258 @@ import DossierSheet from '../components/DossierSheet'
 
 const PLANNING_KEY = (date) => `nm-planning-${date}`
 
-// ── Écran de félicitations ────────────────────────────────────────────────────
-function EcranFelicitations({ totalFait, navigate, fromPlanning }) {
+// ── Utilitaires ───────────────────────────────────────────────────────────────
+function fmtDuree(min) {
+  if (!min || min <= 0) return null
+  if (min < 60) return `${min} min`
+  const h = Math.round((min / 60) * 10) / 10
+  return `${h}h`
+}
+
+function fmtLibere(doneIds, planningData) {
+  const total = doneIds.reduce((s, id) => {
+    const tp = planningData?.tachesPlanifiees.find(p => p.tacheId === id)
+    return s + (tp?.dureeMin ?? 45)
+  }, 0)
+  return fmtDuree(total)
+}
+
+// ── Écran de fin ──────────────────────────────────────────────────────────────
+function EcranFin({ fait, doneIds, planningData, navigate, fromPlanning }) {
+  const libere = fmtLibere(doneIds, planningData)
   return (
     <div className="focus-page">
-      <div className="focus-done-wrap">
-        <div className="focus-done-circle">
-          <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <div className="focus-fin-wrap">
+        <div className="focus-fin-icon">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white"
+            strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <polyline points="20 6 9 17 4 12"/>
           </svg>
         </div>
-        <h2 className="focus-done-title">Journée accomplie !</h2>
-        <p className="focus-done-sub">
-          {totalFait > 0
-            ? `${totalFait} tâche${totalFait > 1 ? 's' : ''} terminée${totalFait > 1 ? 's' : ''} aujourd'hui.`
-            : 'Aucune tâche en cours pour aujourd\'hui.'}
+        <p className="focus-fin-stat">
+          Tu as traité <strong>{fait}&nbsp;tâche{fait > 1 ? 's' : ''}</strong>.
         </p>
+        {libere && (
+          <p className="focus-fin-libere">
+            Tu as libéré <strong>{libere}</strong> de ta tête aujourd'hui.
+          </p>
+        )}
         <button
-          className="btn btn-primary"
-          style={{ marginTop: 32, width: '100%', padding: '15px' }}
-          onClick={() => navigate(fromPlanning ? '/planning' : '/aujourdhui')}
+          className="focus-fin-btn"
+          onClick={() => navigate(fromPlanning ? '/planning' : '/')}
         >
-          {fromPlanning ? 'Retour au planning' : "Retour à l'accueil"}
+          Retour
         </button>
       </div>
-      <style>{focusCSS}</style>
+      <style>{CSS}</style>
     </div>
   )
 }
 
-// ── Page principale Mode Focus ────────────────────────────────────────────────
+// ── Page principale ───────────────────────────────────────────────────────────
 export default function ModeFocus() {
   const { dossiersAujourdhui, toggleTache } = useApp()
   const navigate = useNavigate()
   const location = useLocation()
 
-  // ── Mode planning (lancé depuis /planning) ───────────────────────────────
-  const planningDate     = location.state?.planningDate    || null
-  // ── Mode brain dump (lancé depuis "Par où commencer ?") ──────────────────
-  const brainDumpTaches  = location.state?.brainDumpTaches || null
+  const planningDate    = location.state?.planningDate    || null
+  const brainDumpTaches = location.state?.brainDumpTaches || null
 
   const [planningData, setPlanningData] = useState(() => {
     if (!planningDate) return null
     try { return JSON.parse(localStorage.getItem(PLANNING_KEY(planningDate))) } catch { return null }
   })
 
-  // ── Liste de tâches gelée à l'ouverture ─────────────────────────────────
   const [tasks] = useState(() => {
     if (planningData) {
       return planningData.tachesPlanifiees
         .filter(tp => !tp.done)
         .map(tp => ({
-          tache:   { id: tp.tacheId,   titre: tp.titreTache,   done: false },
-          dossier: { id: tp.dossierId, titre: tp.titreDossier, organisme: tp.organisme, quadrant: tp.quadrant },
+          tache:   { id: tp.tacheId,   titre: tp.titreTache,  done: false },
+          dossier: { id: tp.dossierId, titre: tp.titreDossier,
+                     organisme: tp.organisme ?? null, quadrant: tp.quadrant },
+          dureeMin: tp.dureeMin ?? null,
         }))
     }
-    // Tâches brain dump : passées directement, déjà triées Eisenhower, pas de race condition
     if (brainDumpTaches) return brainDumpTaches
-    return dossiersAujourdhui.flatMap(dossier =>
-      dossier.taches
-        .filter(t => !t.done)
-        .map(t => ({ tache: t, dossier }))
+    return dossiersAujourdhui.flatMap(d =>
+      d.taches.filter(t => !t.done).map(t => ({ tache: t, dossier: d, dureeMin: null }))
     )
   })
 
-  const [index,      setIndex]      = useState(0)
-  const [completing, setCompleting] = useState(false)
-  const [fait,       setFait]       = useState(0)
-  const [showPlus,   setShowPlus]   = useState(false)
-  const [showSheet,  setShowSheet]  = useState(false)
+  const [index,     setIndex]     = useState(0)
+  const [fait,      setFait]      = useState(0)
+  const [doneIds,   setDoneIds]   = useState([])
+  const [cardPhase, setCardPhase] = useState('idle') // 'idle' | 'exiting' | 'entering'
+  const [bumpKey,   setBumpKey]   = useState(0)
+  const [showPlus,  setShowPlus]  = useState(false)
+  const [showSheet, setShowSheet] = useState(false)
 
   const total   = tasks.length
   const current = tasks[index]
 
+  // ── Fin de session ───────────────────────────────────────────────────────
   if (!current) {
-    return <EcranFelicitations totalFait={fait} navigate={navigate} fromPlanning={!!planningDate} />
+    return (
+      <EcranFin
+        fait={fait}
+        doneIds={doneIds}
+        planningData={planningData}
+        navigate={navigate}
+        fromPlanning={!!planningDate}
+      />
+    )
   }
+
+  const creneau  = planningData?.tachesPlanifiees.find(t => t.tacheId === current.tache.id) ?? null
+  const dureeMin = current.dureeMin ?? creneau?.dureeMin ?? null
 
   // ── Fait ✓ ───────────────────────────────────────────────────────────────
-  const handleFait = async () => {
-    if (completing) return
+  const handleFait = () => {
+    if (cardPhase !== 'idle') return
     haptic('success')
-    setCompleting(true)
-    await toggleTache(current.dossier.id, current.tache.id)
-    setFait(n => n + 1)
-    setCompleting(false)
-    setIndex(i => i + 1)
+    // API en arrière-plan
+    if (current.dossier.id) {
+      toggleTache(current.dossier.id, current.tache.id).catch(console.error)
+    }
+    setCardPhase('exiting')
+    setTimeout(() => {
+      setFait(n => n + 1)
+      setDoneIds(ids => [...ids, current.tache.id])
+      setBumpKey(k => k + 1)
+      setIndex(i => i + 1)
+      setCardPhase('entering')
+      setTimeout(() => setCardPhase('idle'), 340)
+    }, 280)
   }
 
-  const handlePasser = () => { haptic('light'); setIndex(i => i + 1) }
+  // ── Passer ───────────────────────────────────────────────────────────────
+  const handlePasser = () => {
+    if (cardPhase !== 'idle') return
+    haptic('light')
+    setCardPhase('entering')
+    setIndex(i => i + 1)
+    setTimeout(() => setCardPhase('idle'), 340)
+  }
 
-  // ── Temps supplémentaire ─────────────────────────────────────────────────
+  // ── Plus de temps ────────────────────────────────────────────────────────
   const handlePlusTemps = async (dureeSupp) => {
     setShowPlus(false)
     if (!planningData || !current) return
-
-    const updated     = recalculerApresExtension(planningData.tachesPlanifiees, current.tache.id, dureeSupp)
-    const newPlanning = { ...planningData, tachesPlanifiees: updated }
-
-    localStorage.setItem(PLANNING_KEY(planningDate), JSON.stringify(newPlanning))
-    setPlanningData(newPlanning)
-
-    try { await savePlanning(newPlanning) } catch (e) { console.error(e) }
-
+    const updated = recalculerApresExtension(planningData.tachesPlanifiees, current.tache.id, dureeSupp)
+    const np      = { ...planningData, tachesPlanifiees: updated }
+    localStorage.setItem(PLANNING_KEY(planningDate), JSON.stringify(np))
+    setPlanningData(np)
+    try { await savePlanning(np) } catch {}
     try {
-      if (Notification.permission === 'granted') {
-        new Notification('Planning ajusté', {
-          body: 'Ton planning a été recalculé.',
-          icon: '/favicon.svg',
-          badge: '/favicon.svg',
-        })
-      }
+      if (Notification.permission === 'granted')
+        new Notification('Planning ajusté', { body: 'Ton planning a été recalculé.', icon: '/favicon.svg' })
     } catch {}
   }
 
-  const progress = total > 0 ? (index / total) * 100 : 100
-
-  // Créneau de la tâche courante (si mode planning)
-  const creneau = planningData
-    ? planningData.tachesPlanifiees.find(t => t.tacheId === current.tache.id)
-    : null
+  const cardClass = cardPhase === 'exiting' ? 'focus-card focus-card--exit'
+                  : cardPhase === 'entering' ? 'focus-card focus-card--enter'
+                  : 'focus-card'
 
   return (
     <div className="focus-page">
-      {/* En-tête */}
-      <div className="focus-header">
-        <button className="focus-quit" onClick={() => navigate(planningDate ? '/planning' : '/aujourdhui')}>
-          ← Quitter
-        </button>
-        <span className="focus-counter">
-          {index + 1} <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>/ {total}</span>
-        </span>
-      </div>
 
-      {/* Barre de progression */}
-      <div className="focus-track">
-        <div className="focus-fill" style={{ width: `${progress}%` }} />
-      </div>
+      {/* ── Header vert ────────────────────────────────────────────── */}
+      <header className="focus-header">
+        <div className="focus-header-row">
+          <button
+            className="focus-quit"
+            onClick={() => navigate(planningDate ? '/planning' : '/')}
+          >
+            ← Quitter
+          </button>
+          <span className="focus-counter" key={bumpKey}>
+            {index + 1}
+            <span className="focus-counter-sep"> / </span>
+            <span className="focus-counter-total">{total}</span>
+          </span>
+        </div>
 
-      {/* Carte tâche */}
+        {/* Barre segmentée */}
+        <div className="focus-segments">
+          {tasks.map((_, i) => (
+            <div key={i} className={`focus-seg${i < index ? ' focus-seg--done' : ''}`} />
+          ))}
+        </div>
+      </header>
+
+      {/* ── Corps crème ────────────────────────────────────────────── */}
       <div className="focus-body">
-        <div className="focus-card">
+        <div className={cardClass} key={index}>
+
+          {/* Dossier parent small caps muted centré */}
           <p className="focus-dossier-label">
             {current.dossier.titre}
             {current.dossier.organisme && (
-              <span style={{ color: 'var(--border)', fontWeight: 400 }}> · {current.dossier.organisme}</span>
+              <span className="focus-dossier-org"> · {current.dossier.organisme}</span>
             )}
           </p>
+
+          {/* Titre de la tâche */}
           <p className="focus-tache-titre">{current.tache.titre}</p>
 
-          {/* Lien dossier parent → ouvre le panneau */}
-          <button className="focus-dossier-link" onClick={() => setShowSheet(true)}>
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
-            </svg>
-            {current.dossier.titre}
-            {current.dossier.organisme && (
-              <span style={{ opacity: 0.6 }}> · {current.dossier.organisme}</span>
-            )}
-          </button>
+          {/* Lien dossier discret */}
+          {current.dossier.id && (
+            <button className="focus-dossier-link" onClick={() => setShowSheet(true)}>
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+              </svg>
+              Voir le dossier
+            </button>
+          )}
 
-          {creneau && (
-            <p style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 8 }}>
-              {creneau.heureDebut} – {creneau.heureFin}
-            </p>
+          {/* Durée estimée */}
+          {dureeMin && (
+            <div className="focus-duree-bloc">
+              <span className="focus-duree-val">{fmtDuree(dureeMin)}</span>
+              <span className="focus-duree-lbl">estimé</span>
+            </div>
+          )}
+
+          {/* Créneau planning */}
+          {creneau && !dureeMin && (
+            <p className="focus-creneau">{creneau.heureDebut} – {creneau.heureFin}</p>
           )}
         </div>
       </div>
 
-      {/* Boutons Passer / Fait */}
+      {/* ── Boutons action ─────────────────────────────────────────── */}
       <div className="focus-footer">
-        <button className="focus-btn focus-passer" onClick={handlePasser} disabled={completing}>
+        <button
+          className="focus-btn-passer"
+          onClick={handlePasser}
+          disabled={cardPhase !== 'idle'}
+        >
           Passer
         </button>
-        <button className="focus-btn focus-fait" onClick={handleFait} disabled={completing}>
-          {completing ? '…' : 'Fait ✓'}
+        <button
+          className="focus-btn-fait"
+          onClick={handleFait}
+          disabled={cardPhase !== 'idle'}
+        >
+          Fait ✓
         </button>
       </div>
 
-      {/* "J'ai besoin de plus de temps" — mode planning uniquement */}
       {planningDate && (
         <div className="focus-plus-wrap">
-          <button className="focus-plus-btn" onClick={() => setShowPlus(true)} disabled={completing}>
+          <button
+            className="focus-plus-btn"
+            onClick={() => setShowPlus(true)}
+            disabled={cardPhase !== 'idle'}
+          >
             J'ai besoin de plus de temps
           </button>
         </div>
       )}
 
-      {/* Modal temps supplémentaire */}
+      {/* Modal plus de temps */}
       {showPlus && (
         <div className="overlay" onClick={() => setShowPlus(false)}>
           <div className="sheet" onClick={e => e.stopPropagation()}>
@@ -205,12 +269,9 @@ export default function ModeFocus() {
             </p>
             <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
               {[15, 30, 45, 60].map(m => (
-                <button
-                  key={m}
-                  className="btn btn-secondary"
+                <button key={m} className="btn btn-secondary"
                   style={{ flex: 1, padding: '12px 4px', fontSize: 15, fontWeight: 600 }}
-                  onClick={() => handlePlusTemps(m)}
-                >
+                  onClick={() => handlePlusTemps(m)}>
                   +{m} min
                 </button>
               ))}
@@ -222,125 +283,204 @@ export default function ModeFocus() {
         </div>
       )}
 
-      {/* Panneau dossier contextuel */}
+      {/* DossierSheet */}
       {showSheet && (
-        <DossierSheet
-          dossierId={current.dossier.id}
-          onClose={() => setShowSheet(false)}
-        />
+        <DossierSheet dossierId={current.dossier.id} onClose={() => setShowSheet(false)} />
       )}
 
-      <style>{focusCSS}</style>
+      <style>{CSS}</style>
     </div>
   )
 }
 
-// ── Styles ────────────────────────────────────────────────────────────────────
-const focusCSS = `
-  .focus-page {
-    position: fixed; inset: 0;
-    background: var(--bg, #F9F8F5);
-    display: flex; flex-direction: column;
-    z-index: 200;
+/* ══ CSS ══════════════════════════════════════════════════════════════════════ */
+const CSS = `
+  /* ── Keyframes ──────────────────────────────────────────────────────────── */
+  @keyframes focus-slide-up {
+    from { opacity: 1; transform: translateY(0);     }
+    to   { opacity: 0; transform: translateY(-64px); }
   }
-  .focus-header {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 16px 22px 12px; flex-shrink: 0;
+  @keyframes focus-slide-in {
+    from { opacity: 0; transform: translateY(64px); }
+    to   { opacity: 1; transform: translateY(0);    }
   }
-  .focus-quit {
-    border: none; background: none;
-    font-size: 14px; color: var(--text-muted); cursor: pointer;
-    padding: 6px 0; font-family: inherit;
+  @keyframes focus-bump {
+    0%   { transform: scale(1);    }
+    45%  { transform: scale(1.42); }
+    100% { transform: scale(1);    }
   }
-  .focus-counter { font-size: 14px; font-weight: 600; color: var(--text); }
-  .focus-track { height: 3px; background: var(--border); flex-shrink: 0; }
-  .focus-fill {
-    height: 100%; background: var(--green);
-    transition: width 0.35s cubic-bezier(0.4, 0, 0.2, 1);
-  }
-  .focus-body {
-    flex: 1; display: flex; align-items: center; justify-content: center;
-    padding: 28px 22px;
-  }
-  .focus-card {
-    width: 100%; max-width: 480px;
-    background: var(--surface); border-radius: 22px;
-    padding: 36px 28px; border: 1px solid var(--border);
-    box-shadow: 0 8px 32px rgba(0,0,0,0.07);
-    animation: focusIn 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-  }
-  @keyframes focusIn {
-    from { opacity: 0; transform: translateY(10px); }
-    to   { opacity: 1; transform: translateY(0); }
-  }
-  .focus-dossier-label {
-    font-size: 11px; font-weight: 700; color: var(--text-muted);
-    text-transform: uppercase; letter-spacing: 2px;
-    margin-bottom: 18px; line-height: 1.4;
-  }
-  .focus-tache-titre {
-    font-size: 26px; font-weight: 600; color: var(--text);
-    line-height: 1.25; letter-spacing: -0.6px;
-  }
-  .focus-dossier-link {
-    display: inline-flex; align-items: center; gap: 5px;
-    margin-top: 14px;
-    border: none; background: none; padding: 0;
-    font-size: 12px; font-weight: 500; color: var(--text-muted);
-    cursor: pointer; font-family: inherit;
-    text-decoration: underline; text-decoration-color: var(--border);
-    text-underline-offset: 2px;
-    transition: color 0.15s;
-    max-width: 100%; text-align: left;
-  }
-  .focus-dossier-link:hover { color: var(--text); }
-  .focus-footer {
-    padding: 16px 22px 8px;
-    display: flex; gap: 10px; flex-shrink: 0;
-  }
-  .focus-btn {
-    flex: 1; padding: 17px 12px;
-    border: none; border-radius: 16px;
-    font-size: 16px; font-weight: 600;
-    cursor: pointer; font-family: inherit;
-    transition: transform 0.12s, opacity 0.15s;
-  }
-  .focus-btn:active { transform: scale(0.97); }
-  .focus-btn:disabled { opacity: 0.45; pointer-events: none; }
-  .focus-passer { background: var(--gray-light, #F2F1EE); color: var(--text-muted); flex: 0.55; }
-  .focus-fait   { background: var(--green, #3D7A52); color: #fff; flex: 1; }
-  .focus-plus-wrap {
-    padding: 0 22px calc(env(safe-area-inset-bottom, 0px) + 16px);
-    text-align: center; flex-shrink: 0;
-  }
-  .focus-plus-btn {
-    border: none; background: none;
-    font-size: 13px; color: var(--text-muted); cursor: pointer;
-    font-family: inherit; padding: 6px 12px;
-    text-decoration: underline; text-decoration-color: var(--border);
-    transition: color 0.15s;
-  }
-  .focus-plus-btn:hover  { color: var(--text); }
-  .focus-plus-btn:disabled { opacity: 0.4; pointer-events: none; }
-  .focus-done-wrap {
-    flex: 1; display: flex; flex-direction: column;
-    align-items: center; justify-content: center;
-    padding: 40px 28px; text-align: center;
-  }
-  .focus-done-circle {
-    width: 72px; height: 72px; border-radius: 50%;
-    background: var(--green); display: flex;
-    align-items: center; justify-content: center;
-    margin-bottom: 24px;
-    animation: popIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
-  }
-  @keyframes popIn {
+  @keyframes focus-pop {
     from { transform: scale(0); opacity: 0; }
     to   { transform: scale(1); opacity: 1; }
   }
-  .focus-done-title {
-    font-size: 30px; font-weight: 700; color: var(--text);
-    letter-spacing: -1px; margin-bottom: 10px;
+
+  /* ── Page ────────────────────────────────────────────────────────────────── */
+  .focus-page {
+    position: fixed; inset: 0;
+    background: #F7F5F0;
+    display: flex; flex-direction: column;
+    z-index: 200;
   }
-  .focus-done-sub { font-size: 15px; color: var(--text-muted); line-height: 1.5; }
+
+  /* ── Header vert ─────────────────────────────────────────────────────────── */
+  .focus-header {
+    background: #1C3829;
+    padding: 52px 22px 16px;
+    flex-shrink: 0;
+  }
+  .focus-header-row {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 16px;
+  }
+  .focus-quit {
+    border: none; background: none;
+    font-size: 14px; font-weight: 500;
+    color: rgba(255,255,255,0.7); cursor: pointer;
+    padding: 4px 0; font-family: inherit;
+    transition: color 0.15s;
+  }
+  .focus-quit:active { color: #fff; }
+
+  .focus-counter {
+    font-size: 16px; font-weight: 700; color: #fff;
+    animation: focus-bump 0.38s cubic-bezier(0.34, 1.56, 0.64, 1);
+    display: inline-flex; align-items: baseline; gap: 1px;
+  }
+  .focus-counter-sep   { color: rgba(255,255,255,0.35); font-weight: 400; }
+  .focus-counter-total { font-size: 13px; font-weight: 400; color: rgba(255,255,255,0.45); }
+
+  /* Barre segmentée */
+  .focus-segments {
+    display: flex; gap: 4px; height: 4px;
+  }
+  .focus-seg {
+    flex: 1; border-radius: 2px;
+    background: rgba(255,255,255,0.2);
+    transition: background 0.35s ease;
+  }
+  .focus-seg--done { background: #C4623A; }
+
+  /* ── Corps ───────────────────────────────────────────────────────────────── */
+  .focus-body {
+    flex: 1; display: flex; align-items: center; justify-content: center;
+    padding: 24px 22px; overflow: hidden;
+  }
+  .focus-card {
+    width: 100%; max-width: 480px;
+    background: #fff; border-radius: 20px;
+    padding: 32px 26px;
+    border: 1px solid #DDD8CE;
+    box-shadow: 0 4px 28px rgba(28,56,41,0.09);
+    display: flex; flex-direction: column; align-items: center;
+    text-align: center;
+  }
+  .focus-card--exit  { animation: focus-slide-up 0.28s ease forwards; }
+  .focus-card--enter { animation: focus-slide-in 0.30s ease forwards; }
+
+  .focus-dossier-label {
+    font-size: 10px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 2px;
+    color: #A09080; margin-bottom: 14px; line-height: 1.4;
+  }
+  .focus-dossier-org { font-weight: 400; opacity: 0.7; }
+
+  .focus-tache-titre {
+    font-size: 20px; font-weight: 700; color: #2A1F14;
+    line-height: 1.3; letter-spacing: -0.4px; margin-bottom: 12px;
+  }
+
+  .focus-dossier-link {
+    display: inline-flex; align-items: center; gap: 5px;
+    background: #F7F5F0; border: none; border-radius: 20px;
+    padding: 5px 12px; margin-bottom: 20px;
+    font-size: 11px; font-weight: 500; color: #A09080;
+    cursor: pointer; font-family: inherit;
+    transition: background 0.15s, color 0.15s;
+  }
+  .focus-dossier-link:active { background: #EDE9E2; color: #2A1F14; }
+
+  .focus-duree-bloc {
+    display: flex; flex-direction: column; align-items: center; gap: 3px;
+    background: #F0EBE3; border-radius: 10px;
+    padding: 12px 32px; margin-top: 2px;
+    min-width: 110px;
+  }
+  .focus-duree-val {
+    font-size: 24px; font-weight: 700; color: #2A1F14; line-height: 1;
+  }
+  .focus-duree-lbl {
+    font-size: 9px; font-weight: 600; color: #A09080;
+    text-transform: uppercase; letter-spacing: 1.2px;
+  }
+  .focus-creneau { font-size: 12px; color: #A09080; margin-top: 12px; }
+
+  /* ── Boutons ─────────────────────────────────────────────────────────────── */
+  .focus-footer {
+    padding: 0 22px 10px;
+    display: flex; gap: 10px; flex-shrink: 0;
+  }
+  .focus-btn-passer {
+    flex: 0.55; padding: 16px 12px;
+    background: #F0EBE3; color: #7A6A5A;
+    border: none; border-radius: 14px;
+    font-size: 15px; font-weight: 600; font-family: inherit;
+    cursor: pointer; transition: background 0.15s, transform 0.12s;
+  }
+  .focus-btn-passer:active:not(:disabled) { background: #DDD8CE; transform: scale(0.97); }
+  .focus-btn-passer:disabled { opacity: 0.4; pointer-events: none; }
+
+  .focus-btn-fait {
+    flex: 1; padding: 16px 12px;
+    background: #1C3829; color: #fff;
+    border: none; border-radius: 14px;
+    font-size: 15px; font-weight: 700; font-family: inherit;
+    cursor: pointer; transition: background 0.15s, transform 0.12s;
+  }
+  .focus-btn-fait:active:not(:disabled) { background: #152e1f; transform: scale(0.97); }
+  .focus-btn-fait:disabled { opacity: 0.4; pointer-events: none; }
+
+  .focus-plus-wrap {
+    padding: 0 22px calc(env(safe-area-inset-bottom, 0px) + 14px);
+    text-align: center; flex-shrink: 0;
+  }
+  .focus-plus-btn {
+    border: none; background: none; font-size: 13px; color: #A09080;
+    cursor: pointer; font-family: inherit; padding: 5px 12px;
+    text-decoration: underline; text-decoration-color: #DDD8CE;
+    transition: color 0.15s;
+  }
+  .focus-plus-btn:disabled { opacity: 0.4; pointer-events: none; }
+  .focus-plus-btn:active { color: #2A1F14; }
+
+  /* ── Écran de fin ────────────────────────────────────────────────────────── */
+  .focus-fin-wrap {
+    flex: 1; display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    padding: 40px 32px; text-align: center;
+  }
+  .focus-fin-icon {
+    width: 68px; height: 68px; border-radius: 50%;
+    background: #1C3829;
+    display: flex; align-items: center; justify-content: center;
+    margin-bottom: 32px;
+    animation: focus-pop 0.45s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .focus-fin-stat {
+    font-size: 24px; color: #2A1F14;
+    line-height: 1.35; letter-spacing: -0.5px;
+    margin-bottom: 10px;
+  }
+  .focus-fin-libere {
+    font-size: 17px; color: #A09080;
+    line-height: 1.55; margin-bottom: 48px;
+    max-width: 280px;
+  }
+  .focus-fin-btn {
+    padding: 14px 56px;
+    background: #1C3829; color: #fff;
+    border: none; border-radius: 12px;
+    font-size: 15px; font-weight: 600; font-family: inherit;
+    cursor: pointer; transition: background 0.15s, transform 0.12s;
+  }
+  .focus-fin-btn:active { background: #152e1f; transform: scale(0.97); }
 `
