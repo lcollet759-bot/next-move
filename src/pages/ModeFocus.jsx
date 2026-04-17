@@ -30,18 +30,15 @@ function EcranFin({ fait, doneIds, planningData, navigate, fromPlanning }) {
   return (
     <div className="focus-page">
       <div className="focus-fin-wrap">
-        <div className="focus-fin-icon">
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white"
-            strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="20 6 9 17 4 12"/>
-          </svg>
+        <div className="focus-fin-logo">
+          <span className="focus-fin-logo-mark">»</span>
         </div>
         <p className="focus-fin-stat">
           Tu as traité <strong>{fait}&nbsp;tâche{fait > 1 ? 's' : ''}</strong>.
         </p>
         {libere && (
           <p className="focus-fin-libere">
-            Tu as libéré <strong>{libere}</strong> de ta tête aujourd'hui.
+            Tu as libéré <strong>{libere}</strong><br />de ta tête aujourd'hui.
           </p>
         )}
         <button
@@ -90,7 +87,9 @@ export default function ModeFocus() {
   const [index,     setIndex]     = useState(0)
   const [fait,      setFait]      = useState(0)
   const [doneIds,   setDoneIds]   = useState([])
-  const [cardPhase, setCardPhase] = useState('idle') // 'idle' | 'exiting' | 'entering'
+  // animPhase pilote les transitions CSS inline (pas de keyframes)
+  // 'idle' | 'exiting' | 'snap' | 'entering'
+  const [animPhase, setAnimPhase] = useState('idle')
   const [bumpKey,   setBumpKey]   = useState(0)
   const [showPlus,  setShowPlus]  = useState(false)
   const [showSheet, setShowSheet] = useState(false)
@@ -116,30 +115,42 @@ export default function ModeFocus() {
 
   // ── Fait ✓ ───────────────────────────────────────────────────────────────
   const handleFait = () => {
-    if (cardPhase !== 'idle') return
+    if (animPhase !== 'idle') return
     haptic('success')
-    // API en arrière-plan
     if (current.dossier.id) {
       toggleTache(current.dossier.id, current.tache.id).catch(console.error)
     }
-    setCardPhase('exiting')
+    // 1. Carte sort vers le haut (transition 300ms)
+    setAnimPhase('exiting')
     setTimeout(() => {
+      // 2. Contenu mis à jour, carte snappée en bas (pas de transition)
       setFait(n => n + 1)
       setDoneIds(ids => [...ids, current.tache.id])
       setBumpKey(k => k + 1)
       setIndex(i => i + 1)
-      setCardPhase('entering')
-      setTimeout(() => setCardPhase('idle'), 340)
-    }, 280)
+      setAnimPhase('snap')
+      // 3. Double rAF pour laisser le navigateur peindre le snap avant la transition
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          setAnimPhase('entering')
+          setTimeout(() => setAnimPhase('idle'), 320)
+        })
+      })
+    }, 310)
   }
 
   // ── Passer ───────────────────────────────────────────────────────────────
   const handlePasser = () => {
-    if (cardPhase !== 'idle') return
+    if (animPhase !== 'idle') return
     haptic('light')
-    setCardPhase('entering')
     setIndex(i => i + 1)
-    setTimeout(() => setCardPhase('idle'), 340)
+    setAnimPhase('snap')
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        setAnimPhase('entering')
+        setTimeout(() => setAnimPhase('idle'), 320)
+      })
+    })
   }
 
   // ── Plus de temps ────────────────────────────────────────────────────────
@@ -157,9 +168,15 @@ export default function ModeFocus() {
     } catch {}
   }
 
-  const cardClass = cardPhase === 'exiting' ? 'focus-card focus-card--exit'
-                  : cardPhase === 'entering' ? 'focus-card focus-card--enter'
-                  : 'focus-card'
+  // Styles inline pilotant les transitions CSS — pas de keyframes
+  const TR = 'transform 0.3s ease, opacity 0.3s ease'
+  const cardStyle =
+    animPhase === 'exiting'  ? { transform: 'translateY(-72px)', opacity: 0, transition: TR }
+    : animPhase === 'snap'   ? { transform: 'translateY(72px)',  opacity: 0, transition: 'none' }
+    : animPhase === 'entering' ? { transform: 'translateY(0)',   opacity: 1, transition: TR }
+    :                            { transform: 'translateY(0)',   opacity: 1 }
+
+  const animating = animPhase !== 'idle'
 
   return (
     <div className="focus-page">
@@ -190,7 +207,7 @@ export default function ModeFocus() {
 
       {/* ── Corps crème ────────────────────────────────────────────── */}
       <div className="focus-body">
-        <div className={cardClass} key={index}>
+        <div className="focus-card" style={cardStyle}>
 
           {/* Dossier parent small caps muted centré */}
           <p className="focus-dossier-label">
@@ -234,14 +251,14 @@ export default function ModeFocus() {
         <button
           className="focus-btn-passer"
           onClick={handlePasser}
-          disabled={cardPhase !== 'idle'}
+          disabled={animating}
         >
           Passer
         </button>
         <button
           className="focus-btn-fait"
           onClick={handleFait}
-          disabled={cardPhase !== 'idle'}
+          disabled={animating}
         >
           Fait ✓
         </button>
@@ -252,7 +269,7 @@ export default function ModeFocus() {
           <button
             className="focus-plus-btn"
             onClick={() => setShowPlus(true)}
-            disabled={cardPhase !== 'idle'}
+            disabled={animating}
           >
             J'ai besoin de plus de temps
           </button>
@@ -295,15 +312,7 @@ export default function ModeFocus() {
 
 /* ══ CSS ══════════════════════════════════════════════════════════════════════ */
 const CSS = `
-  /* ── Keyframes ──────────────────────────────────────────────────────────── */
-  @keyframes focus-slide-up {
-    from { opacity: 1; transform: translateY(0);     }
-    to   { opacity: 0; transform: translateY(-64px); }
-  }
-  @keyframes focus-slide-in {
-    from { opacity: 0; transform: translateY(64px); }
-    to   { opacity: 1; transform: translateY(0);    }
-  }
+  /* ── Keyframes (compteur + logo fin) ────────────────────────────────────── */
   @keyframes focus-bump {
     0%   { transform: scale(1);    }
     45%  { transform: scale(1.42); }
@@ -367,15 +376,14 @@ const CSS = `
   }
   .focus-card {
     width: 100%; max-width: 480px;
-    background: #fff; border-radius: 20px;
+    background: #fff; border-radius: 14px;
     padding: 32px 26px;
     border: 1px solid #DDD8CE;
-    box-shadow: 0 4px 28px rgba(28,56,41,0.09);
+    box-shadow: 0 2px 16px rgba(28,56,41,0.07);
     display: flex; flex-direction: column; align-items: center;
     text-align: center;
+    /* Les transitions sont appliquées en inline style via animPhase */
   }
-  .focus-card--exit  { animation: focus-slide-up 0.28s ease forwards; }
-  .focus-card--enter { animation: focus-slide-in 0.30s ease forwards; }
 
   .focus-dossier-label {
     font-size: 10px; font-weight: 700;
@@ -458,28 +466,36 @@ const CSS = `
     align-items: center; justify-content: center;
     padding: 40px 32px; text-align: center;
   }
-  .focus-fin-icon {
-    width: 68px; height: 68px; border-radius: 50%;
-    background: #1C3829;
+  .focus-fin-logo {
+    width: 64px; height: 64px; border-radius: 50%;
+    background: #C4623A;
     display: flex; align-items: center; justify-content: center;
-    margin-bottom: 32px;
+    margin-bottom: 36px;
     animation: focus-pop 0.45s cubic-bezier(0.34, 1.56, 0.64, 1);
+    flex-shrink: 0;
+  }
+  .focus-fin-logo-mark {
+    color: #fff; font-size: 22px; font-weight: 800;
+    letter-spacing: -2.5px; line-height: 1;
+    margin-left: -2px;
   }
   .focus-fin-stat {
-    font-size: 24px; color: #2A1F14;
-    line-height: 1.35; letter-spacing: -0.5px;
-    margin-bottom: 10px;
+    font-size: 28px; font-weight: 400; color: #2A1F14;
+    line-height: 1.3; letter-spacing: -0.6px;
+    margin-bottom: 12px;
   }
+  .focus-fin-stat strong { font-weight: 700; }
   .focus-fin-libere {
-    font-size: 17px; color: #A09080;
-    line-height: 1.55; margin-bottom: 48px;
-    max-width: 280px;
+    font-size: 20px; font-weight: 400; color: #A09080;
+    line-height: 1.5; margin-bottom: 52px;
+    max-width: 300px;
   }
+  .focus-fin-libere strong { color: #2A1F14; font-weight: 600; }
   .focus-fin-btn {
-    padding: 14px 56px;
+    padding: 15px 60px;
     background: #1C3829; color: #fff;
     border: none; border-radius: 12px;
-    font-size: 15px; font-weight: 600; font-family: inherit;
+    font-size: 16px; font-weight: 600; font-family: inherit;
     cursor: pointer; transition: background 0.15s, transform 0.12s;
   }
   .focus-fin-btn:active { background: #152e1f; transform: scale(0.97); }
