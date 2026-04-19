@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 
 // ── Filtres ───────────────────────────────────────────────────────────────────
@@ -67,8 +67,14 @@ function SkeletonGrid() {
 // ── Page principale ───────────────────────────────────────────────────────────
 export default function TousDossiers() {
   const { dossiers, loading } = useApp()
-  const navigate  = useNavigate()
-  const [filtre,    setFiltre]    = useState('tous')
+  const navigate     = useNavigate()
+  const [searchParams] = useSearchParams()
+
+  // Initialiser le filtre depuis l'URL (?filtre=attente depuis Aujourd'hui)
+  const [filtre,    setFiltre]    = useState(() => {
+    const fromUrl = searchParams.get('filtre')
+    return FILTRES.some(f => f.key === fromUrl) ? fromUrl : 'tous'
+  })
   const [recherche, setRecherche] = useState('')
   const [limit,     setLimit]     = useState(PAGE_SIZE)
 

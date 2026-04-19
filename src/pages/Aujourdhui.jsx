@@ -249,7 +249,7 @@ export default function Aujourdhui() {
                     <p className="aj-wait-org">{dossiersAttente[0].organisme}</p>
                   )}
                   {dossiersAttente.length > 1 && (
-                    <button className="aj-wait-more" onClick={() => navigate('/dossiers')}>
+                    <button className="aj-wait-more" onClick={() => navigate('/dossiers?filtre=attente')}>
                       et {dossiersAttente.length - 1} autre{dossiersAttente.length > 2 ? 's' : ''} →
                     </button>
                   )}
