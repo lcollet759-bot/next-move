@@ -259,7 +259,13 @@ export default function Aujourdhui() {
 
             {/* ── Dicter discret ───────────────────────────────────── */}
             <button className="aj-dicter-ghost" onClick={() => setShowBD(true)}>
-              + Dicter autre chose
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1C3829" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                <line x1="12" y1="19" x2="12" y2="23"/>
+                <line x1="8" y1="23" x2="16" y2="23"/>
+              </svg>
+              Dicter autre chose
             </button>
           </>
         )}
@@ -683,23 +689,27 @@ const ajCSS = `
   }
   .aj-wait-more:active { opacity: 0.6; }
 
-  /* ── Bouton Dicter discret ───────────────────────────────────────────────── */
+  /* ── Bouton Dicter (plus visible) ───────────────────────────────────────── */
   .aj-dicter-ghost {
     width: 100%;
     margin-top: 4px;
-    padding: 13px;
-    background: transparent;
-    color: #A09080;
-    border: 1.5px dashed #DDD8CE;
+    padding: 12px 16px;
+    background: #E8F0EA;
+    color: #1C3829;
+    border: 1.5px solid rgba(28,56,41,0.2);
     border-radius: 10px;
     font-size: 13px;
-    font-weight: 500;
+    font-weight: 600;
     font-family: inherit;
     cursor: pointer;
-    transition: background 0.15s, color 0.15s;
+    transition: background 0.15s, border-color 0.15s;
     letter-spacing: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
   }
-  .aj-dicter-ghost:active { background: #F0EBE3; color: #2A1F14; }
+  .aj-dicter-ghost:active { background: #d4e6d8; border-color: #1C3829; }
 
   /* ── Spinner inline ──────────────────────────────────────────────────────── */
   .aj-spinner {
