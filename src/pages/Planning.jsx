@@ -279,6 +279,8 @@ export default function Planning({ forceStep }) {
   }, []) // eslint-disable-line
 
   // ── Auto-sync tâches ─────────────────────────────────────────────────────
+  // Dépend de `planning` pour se relancer après chargement initial depuis localStorage
+  // (évite que des tâches complétées via Mode Focus réapparaissent)
   useEffect(() => {
     if (!planning || loading || generating || step) return
     const doneMap = new Map()
@@ -300,7 +302,7 @@ export default function Planning({ forceStep }) {
     setPlanning(np)
     localStorage.setItem(PLANNING_KEY(todayISO()), JSON.stringify(np))
     savePlanning(np).catch(() => {})
-  }, [dossiersAujourdhui]) // eslint-disable-line
+  }, [dossiersAujourdhui, planning]) // eslint-disable-line
 
   // ── Handlers étapes ──────────────────────────────────────────────────────
   const handleHeures = (h) => {
@@ -701,12 +703,25 @@ export default function Planning({ forceStep }) {
               )}
             </>
           ) : (
-            <div className="empty-state">
-              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--border)" strokeWidth="1.5" strokeLinecap="round" style={{ marginBottom:14 }}>
-                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
-              </svg>
-              <p className="empty-title">Toutes les tâches sont faites !</p>
-              <p className="empty-text">Beau travail pour aujourd'hui.</p>
+            <div className="pla-journee-finie">
+              <div className="pla-journee-logo">
+                <span className="pla-journee-logo-mark">»</span>
+              </div>
+              <p className="pla-journee-titre">Journée accomplie.</p>
+              <p className="pla-journee-sub">
+                Tu as traité <strong>{tachesTermin.length}</strong> tâche{tachesTermin.length > 1 ? 's' : ''} aujourd'hui.
+              </p>
+              <button
+                className="pla-journee-nouveau"
+                onClick={() => {
+                  localStorage.removeItem(PLANNING_KEY(today))
+                  sessionStorage.removeItem('nm-planning-visite')
+                  setPlanning(null); setProposal(null); setPropDraft([])
+                  setStep('heures'); setViewMode('maintenant')
+                }}
+              >
+                + Générer un nouveau planning
+              </button>
             </div>
           )}
 
@@ -1125,6 +1140,46 @@ const CSS = `
   .bloc-badge { margin-left:auto; font-size:10px; font-weight:700; padding:3px 8px; border-radius:20px; text-transform:uppercase; letter-spacing:0.05em; }
   .bloc-titre  { font-size:15px; font-weight:600; color:var(--text); line-height:1.3; margin-bottom:4px; }
   .bloc-dossier { font-size:12px; color:var(--text-muted); margin-bottom:0; }
+
+  /* ══ JOURNÉE ACCOMPLIE ═══════════════════════════════════════════════════ */
+  .pla-journee-finie {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    padding: 32px 20px 20px;
+  }
+  .pla-journee-logo {
+    width: 64px; height: 64px; border-radius: 50%;
+    background: #C4623A;
+    display: flex; align-items: center; justify-content: center;
+    margin-bottom: 28px;
+    animation: pla-pulse 2s ease-in-out 3;
+  }
+  .pla-journee-logo-mark {
+    color: #fff; font-size: 22px; font-weight: 800;
+    letter-spacing: -2.5px; line-height: 1; margin-left: -2px;
+  }
+  .pla-journee-titre {
+    font-size: 26px; font-weight: 700; color: #2A1F14;
+    letter-spacing: -0.6px; margin-bottom: 10px; line-height: 1.2;
+  }
+  .pla-journee-sub {
+    font-size: 16px; font-weight: 400; color: #A09080;
+    line-height: 1.5; margin-bottom: 28px;
+  }
+  .pla-journee-sub strong { color: #2A1F14; font-weight: 600; }
+  .pla-journee-nouveau {
+    padding: 12px 24px;
+    background: transparent;
+    color: #1C3829;
+    border: 1.5px solid #1C3829;
+    border-radius: 10px;
+    font-size: 14px; font-weight: 600; font-family: inherit;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+  }
+  .pla-journee-nouveau:active { background: #1C3829; color: #fff; }
 
   /* ── Skeleton ────────────────────────────────────────────────────────── */
   .pla-sk {
