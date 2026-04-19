@@ -36,7 +36,12 @@ function isoWeekKey(date) {
 export async function requestPermission() {
   if (!('Notification' in window)) return 'unsupported'
   if (Notification.permission === 'granted') return 'granted'
-  return Notification.requestPermission()
+  const result = await Notification.requestPermission()
+  // Sur Android, déclencher une notification de test pour confirmer la permission
+  if (result === 'granted') {
+    setTimeout(() => notify('Next Move', 'Notifications activées ✓'), 500)
+  }
+  return result
 }
 
 export function setReminder(dossierId, titre, echeance) {
@@ -85,10 +90,26 @@ export function checkReminders() {
   saveReminders(updated)
 }
 
+// Sur Android Chrome, new Notification() n'est pas supporté dans le thread principal.
+// Il faut passer par le service worker avec registration.showNotification().
 function notify(title, body) {
-  try {
-    new Notification(title, { body, icon: '/favicon.svg', badge: '/favicon.svg' })
-  } catch {}
+  if (!('Notification' in window) || Notification.permission !== 'granted') return
+
+  const options = { body, icon: '/favicon.svg', badge: '/favicon.svg', vibrate: [100, 50, 100] }
+
+  // Service worker disponible (Android Chrome, iOS Safari 16.4+, tout navigateur PWA)
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.ready
+      .then(registration => registration.showNotification(title, options))
+      .catch(() => {
+        // Fallback : notification classique si le SW n'est pas prêt
+        try { new Notification(title, options) } catch {}
+      })
+    return
+  }
+
+  // Navigateurs desktop sans service worker actif
+  try { new Notification(title, options) } catch {}
 }
 
 function getReminders() {
