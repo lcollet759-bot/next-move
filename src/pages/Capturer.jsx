@@ -5,6 +5,8 @@ import { analyserCapture, analyserDocument, analyserBrainDump } from '../service
 import EtatBadge from '../components/EtatBadge'
 import QuadrantBadge from '../components/QuadrantBadge'
 import { haptic } from '../utils/haptic'
+import * as pdfjsLib from 'pdfjs-dist'
+pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`
 
 const MODES = ['Dicter', 'Écrire', 'Document', 'Brain dump']
 
@@ -47,23 +49,19 @@ async function readFileAsBase64(file) {
   })
 }
 
-// Extrait le texte brut d'un PDF sans dépendance externe.
-// Cible les opérateurs Tj / TJ du flux de contenu PDF non compressé.
-// Retourne une chaîne vide si le PDF est scanné ou compressé.
+// Extrait le texte des 3 premières pages d'un PDF via pdfjs-dist.
+// Retourne une chaîne vide si le PDF est scanné (pas de couche texte).
 async function extractPDFText(file) {
   try {
-    const raw = await file.text()
-    const matches = []
-    const tjRegex = /\(([^)]+)\)\s*Tj/g
-    let m
-    while ((m = tjRegex.exec(raw)) !== null) {
-      matches.push(m[1])
+    const arrayBuffer = await file.arrayBuffer()
+    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise
+    let fullText = ''
+    for (let i = 1; i <= Math.min(pdf.numPages, 3); i++) {
+      const page = await pdf.getPage(i)
+      const content = await page.getTextContent()
+      fullText += content.items.map(item => item.str).join(' ') + '\n'
     }
-    const tjArrRegex = /\[([^\]]+)\]\s*TJ/g
-    while ((m = tjArrRegex.exec(raw)) !== null) {
-      matches.push(m[1].replace(/\(([^)]+)\)/g, '$1 ').trim())
-    }
-    return matches.join(' ').replace(/\s+/g, ' ').trim()
+    return fullText.trim()
   } catch {
     return ''
   }
