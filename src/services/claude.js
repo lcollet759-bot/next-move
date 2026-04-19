@@ -147,6 +147,8 @@ ${REGLES_DATES}
 
 ${REGLE_ETAT}
 
+IMPORTANT : Ne retourne jamais les données personnelles brutes présentes dans ce document (noms, numéros, montants, références). Synthétise uniquement l'action à faire et l'organisme concerné. Si tu détectes des informations confidentielles, remplace-les par [CONFIDENTIEL] dans ta réponse.
+
 Pas de texte avant ou après le JSON.`
 
   const key = getApiKey()
