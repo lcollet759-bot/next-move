@@ -47,6 +47,28 @@ async function readFileAsBase64(file) {
   })
 }
 
+// Extrait le texte brut d'un PDF sans dépendance externe.
+// Cible les opérateurs Tj / TJ du flux de contenu PDF non compressé.
+// Retourne une chaîne vide si le PDF est scanné ou compressé.
+async function extractPDFText(file) {
+  try {
+    const raw = await file.text()
+    const matches = []
+    const tjRegex = /\(([^)]+)\)\s*Tj/g
+    let m
+    while ((m = tjRegex.exec(raw)) !== null) {
+      matches.push(m[1])
+    }
+    const tjArrRegex = /\[([^\]]+)\]\s*TJ/g
+    while ((m = tjArrRegex.exec(raw)) !== null) {
+      matches.push(m[1].replace(/\(([^)]+)\)/g, '$1 ').trim())
+    }
+    return matches.join(' ').replace(/\s+/g, ' ').trim()
+  } catch {
+    return ''
+  }
+}
+
 // Mode icons
 const IconMic = () => (
   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -122,6 +144,7 @@ export default function Capturer() {
   const [docPreview, setDocPreview] = useState(null)
   const [docBase64,  setDocBase64]  = useState(null)
   const [docMime,    setDocMime]    = useState('image/jpeg')
+  const [pdfText,    setPdfText]    = useState(null)
   const cameraRef = useRef(null)
   const fileRef   = useRef(null)
 
@@ -174,7 +197,13 @@ export default function Capturer() {
     const mime = file.type || 'image/jpeg'; setDocMime(mime)
     try {
       if (mime === 'application/pdf') {
-        setDocBase64(await readFileAsBase64(file)); setDocPreview(null)
+        console.log('[Document] Analyse en cours...')
+        const extracted = await extractPDFText(file)
+        setPdfText(extracted)
+        setDocPreview(null)
+        if (!extracted) {
+          setError('Ce PDF semble être une image scannée. Prends une photo du document avec le mode Document pour l\'analyser.')
+        }
       } else {
         const { base64, preview } = await compressImage(file)
         setDocBase64(base64); setDocPreview(preview)
@@ -196,14 +225,24 @@ export default function Capturer() {
         setBrainDumpResult(dossiers.map(d => ({ ...d, origine: 'vocal', quadrant: calcQuadrant(d.urgence, d.importance) })))
       } else {
         let result
-        if (mode === 'Document' && docBase64) result = await analyserDocument(docBase64, docMime)
-        else result = await analyserCapture(input)
+        if (mode === 'Document' && docBase64) {
+          console.log('[Document] Analyse en cours...')
+          result = await analyserDocument(docBase64, docMime)
+          console.log('[Document] Réponse reçue')
+        } else if (mode === 'Document' && pdfText) {
+          console.log('[Document] Analyse en cours...')
+          const texteReduit = pdfText.substring(0, 2000)
+          result = await analyserCapture(`Voici le contenu d'un document :\n\n${texteReduit}\n\n[FIN DU DOCUMENT]\n\nAnalyse ce document et crée un dossier Next Move.`)
+          console.log('[Document] Réponse reçue')
+        } else {
+          result = await analyserCapture(input)
+        }
         const origine = mode === 'Écrire' ? 'texte' : mode.toLowerCase()
         setProposition({ ...result, origine, quadrant: calcQuadrant(result.urgence, result.importance) })
       }
     } catch (e) { setError(e.message) }
     finally { setLoading(false) }
-  }, [mode, texte, transcript, docBase64, docMime, apiKey])
+  }, [mode, texte, transcript, docBase64, pdfText, docMime, apiKey])
 
   const confirmer = useCallback(async () => {
     if (!proposition) return
@@ -229,7 +268,7 @@ export default function Capturer() {
   const reset = () => {
     setProposition(null); setBrainDumpResult(null)
     setTexte(''); setTranscript('')
-    setDocFile(null); setDocPreview(null); setDocBase64(null); setError('')
+    setDocFile(null); setDocPreview(null); setDocBase64(null); setPdfText(null); setError('')
     if (isListening) stopListening()
   }
 
@@ -358,7 +397,7 @@ export default function Capturer() {
   const canAnalyse = !loading &&
     (mode === 'Brain dump'                  ? !!transcript.trim() : true) &&
     (mode === 'Écrire' || mode === 'Dicter' ? !!texte.trim()      : true) &&
-    (mode === 'Document'                    ? !!docBase64          : true)
+    (mode === 'Document'                    ? !!(docBase64 || pdfText) : true)
 
   return (
     <div className="page">
@@ -455,7 +494,7 @@ export default function Capturer() {
                       <span className="doc-filename">{docFile.name}</span>
                     </div>
                 }
-                <button className="btn btn-ghost btn-sm" onClick={() => { setDocFile(null); setDocPreview(null); setDocBase64(null) }}>Changer de document</button>
+                <button className="btn btn-ghost btn-sm" onClick={() => { setDocFile(null); setDocPreview(null); setDocBase64(null); setPdfText(null); setError('') }}>Changer de document</button>
               </div>
             ) : (
               <div className="doc-import-panel">
