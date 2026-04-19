@@ -394,7 +394,7 @@ export default function Capturer() {
         {mode === 'Dicter' && (
           <div className="cap-panel">
             <div className="cap-dicter-center">
-              <div className="cap-mic-ring">
+              <div className={`cap-mic-ring${!isListening ? ' cap-mic-ring-idle' : ''}`}>
                 <button
                   className={`cap-mic-btn${isListening ? ' cap-mic-listening' : ''}`}
                   onClick={toggleDicter}
@@ -403,12 +403,13 @@ export default function Capturer() {
                   <MicBigSvg />
                 </button>
               </div>
+              {!isListening && !texte && (
+                <p className="cap-mic-cta">Appuie et parle</p>
+              )}
               <p className="cap-dicter-hint">
                 {isListening
                   ? "J'écoute… Appuyez à nouveau pour arrêter."
-                  : texte
-                    ? null
-                    : 'Appuyez sur le micro pour commencer à dicter.'}
+                  : null}
               </p>
             </div>
             {texte && (
@@ -672,6 +673,23 @@ function CAP_STYLES() {
       @keyframes cap-pulse {
         0%, 100% { box-shadow: 0 0 0 0 rgba(196,98,58,0.45); }
         50%       { box-shadow: 0 0 0 16px rgba(196,98,58,0); }
+      }
+      /* Anneau pulse subtle quand micro inactif — invite à appuyer */
+      .cap-mic-ring-idle {
+        animation: cap-ring-idle 2.4s ease-in-out infinite;
+      }
+      @keyframes cap-ring-idle {
+        0%, 100% { box-shadow: 0 0 0 0 rgba(28,56,41,0); }
+        50%       { box-shadow: 0 0 0 10px rgba(28,56,41,0.10); }
+      }
+      /* Label "Appuie et parle" */
+      .cap-mic-cta {
+        font-size: 15px;
+        font-weight: 600;
+        color: #1C3829;
+        letter-spacing: -0.2px;
+        text-align: center;
+        margin: 0;
       }
       .cap-dicter-hint {
         font-size: 14px;
