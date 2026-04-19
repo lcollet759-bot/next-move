@@ -1,7 +1,10 @@
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
-import { analyserBrainDump } from '../services/claude'
+import { analyserBrainDump, genererMessageMatinal } from '../services/claude'
+
+function todayISO() { return new Date().toISOString().split('T')[0] }
+const RESUME_KEY = (d) => `nm-resume-${d}`
 
 function calcQuadrant(u, i) {
   if (u && i)  return 1
@@ -22,6 +25,38 @@ export default function Aujourdhui() {
   const [bdLoading, setBdLoading] = useState(false)
   const [bdError,   setBdError]   = useState('')
   const [showBD,    setShowBD]    = useState(false)
+
+  // ── Résumé IA matinal ──────────────────────────────────────────────────────
+  const [resumeIA,      setResumeIA]      = useState(() => {
+    try { return localStorage.getItem(RESUME_KEY(todayISO())) || null } catch { return null }
+  })
+  const [resumeLoading, setResumeLoading] = useState(false)
+  const [resumeError,   setResumeError]   = useState(null)
+
+  const genererResume = useCallback(async () => {
+    if (!apiKey) return
+    const actifs = (dossiers || []).filter(d => d.etat !== 'clos').slice(0, 8)
+    if (actifs.length === 0) return
+    setResumeLoading(true); setResumeError(null)
+    try {
+      const msg = await genererMessageMatinal(actifs)
+      if (msg) {
+        setResumeIA(msg)
+        localStorage.setItem(RESUME_KEY(todayISO()), msg)
+      }
+    } catch (e) {
+      setResumeError(e.message || 'Erreur de génération.')
+    } finally {
+      setResumeLoading(false)
+    }
+  }, [apiKey, dossiers])
+
+  // Générer automatiquement au chargement si pas encore de résumé pour aujourd'hui
+  useEffect(() => {
+    if (!loading && apiKey && !resumeIA) {
+      genererResume()
+    }
+  }, [loading]) // eslint-disable-line
 
   const lancerBrainDump = async () => {
     if (!bdTexte.trim()) return
@@ -106,6 +141,29 @@ export default function Aujourdhui() {
           <span className="aj-greet-light">Bonjour,</span>
           <span className="aj-greet-bold">Ludovic.</span>
         </div>
+
+        {/* ── Résumé IA matinal ─────────────────────────────────────── */}
+        {(resumeIA || resumeLoading || resumeError) && (
+          <div className="aj-resume-card">
+            <div className="aj-resume-top">
+              <span className={`aj-resume-dot${resumeLoading ? ' aj-resume-dot-pulse' : ''}`} />
+              <span className="aj-resume-label">Résumé du jour</span>
+              <button
+                className="aj-resume-refresh"
+                onClick={genererResume}
+                disabled={resumeLoading}
+                title="Régénérer"
+              >↺</button>
+            </div>
+            {resumeLoading ? (
+              <div className="aj-resume-skeleton" />
+            ) : resumeError ? (
+              <p className="aj-resume-error">{resumeError}</p>
+            ) : (
+              <p className="aj-resume-text">{resumeIA}</p>
+            )}
+          </div>
+        )}
 
         {isEmpty ? (
 
@@ -359,6 +417,77 @@ const ajCSS = `
     font-weight: 700;
     color: #2A1F14;
     letter-spacing: -1px;
+  }
+
+  /* ── Résumé IA matinal ───────────────────────────────────────────────────── */
+  .aj-resume-card {
+    background: #fff;
+    border-radius: 14px;
+    border: 1px solid #DDD8CE;
+    padding: 14px 16px;
+    margin-bottom: 6px;
+    box-shadow: 0 1px 4px rgba(42,31,20,0.05);
+  }
+  .aj-resume-top {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    margin-bottom: 8px;
+  }
+  .aj-resume-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #1C3829;
+    flex-shrink: 0;
+  }
+  .aj-resume-dot-pulse {
+    animation: aj-dot-pulse 1.8s ease-in-out infinite;
+  }
+  @keyframes aj-dot-pulse {
+    0%, 100% { opacity: 1; transform: scale(1);   }
+    50%       { opacity: 0.3; transform: scale(0.6); }
+  }
+  .aj-resume-label {
+    flex: 1;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1.4px;
+    text-transform: uppercase;
+    color: #1C3829;
+  }
+  .aj-resume-refresh {
+    background: none;
+    border: none;
+    color: #A09080;
+    font-size: 16px;
+    cursor: pointer;
+    padding: 2px 4px;
+    line-height: 1;
+    transition: color 0.15s, transform 0.2s;
+    font-family: inherit;
+  }
+  .aj-resume-refresh:hover:not(:disabled) { color: #1C3829; }
+  .aj-resume-refresh:active:not(:disabled) { transform: rotate(-90deg); }
+  .aj-resume-refresh:disabled { opacity: 0.3; cursor: default; }
+  .aj-resume-text {
+    font-size: 14px;
+    color: #2A1F14;
+    line-height: 1.6;
+    margin: 0;
+    letter-spacing: -0.1px;
+  }
+  .aj-resume-skeleton {
+    height: 52px;
+    background: linear-gradient(90deg, #DDD8CE 25%, #ede9e2 50%, #DDD8CE 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.4s infinite;
+    border-radius: 8px;
+  }
+  .aj-resume-error {
+    font-size: 12px;
+    color: #C0392B;
+    margin: 0;
   }
 
   /* ── Capture card (état vide) ────────────────────────────────────────────── */
