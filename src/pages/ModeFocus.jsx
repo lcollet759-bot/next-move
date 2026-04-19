@@ -117,10 +117,26 @@ export default function ModeFocus() {
   const handleFait = () => {
     if (animPhase !== 'idle') return
     haptic('success')
+
+    // 1. Marquer la tâche comme faite dans le dossier Supabase
     if (current.dossier.id) {
       toggleTache(current.dossier.id, current.tache.id).catch(console.error)
     }
-    // 1. Carte sort vers le haut (transition 300ms)
+
+    // 2. Mettre à jour le cache planning en localStorage (évite la réapparition)
+    if (planningDate && planningData) {
+      const updatedPlanning = {
+        ...planningData,
+        tachesPlanifiees: planningData.tachesPlanifiees.map(tp =>
+          tp.tacheId === current.tache.id ? { ...tp, done: true } : tp
+        ),
+      }
+      localStorage.setItem(PLANNING_KEY(planningDate), JSON.stringify(updatedPlanning))
+      setPlanningData(updatedPlanning)
+      savePlanning(updatedPlanning).catch(() => {})
+    }
+
+    // 3. Carte sort vers le haut (transition 300ms)
     setAnimPhase('exiting')
     setTimeout(() => {
       // 2. Contenu mis à jour, carte snappée en bas (pas de transition)
