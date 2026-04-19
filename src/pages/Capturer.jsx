@@ -6,7 +6,8 @@ import EtatBadge from '../components/EtatBadge'
 import QuadrantBadge from '../components/QuadrantBadge'
 import { haptic } from '../utils/haptic'
 import * as pdfjsLib from 'pdfjs-dist'
-pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`
+import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
+pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker
 
 const MODES = ['Dicter', 'Écrire', 'Document', 'Brain dump']
 
