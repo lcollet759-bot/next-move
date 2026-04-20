@@ -299,3 +299,283 @@ input, textarea, select { font-family: inherit; }
 ::-webkit-scrollbar { width: 3px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+/* ── Weekly Review Modal ──────────────────────────────────────────────────── */
+.weekly-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  z-index: 200;
+  display: flex;
+  align-items: flex-end;
+  animation: fadeIn 0.15s ease;
+}
+
+.weekly-sheet {
+  background: #F7F5F0;
+  border-radius: 20px 20px 0 0;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+  animation: slideUp 0.22s cubic-bezier(0.32, 0.72, 0, 1);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* ── Header ── */
+.weekly-header {
+  background: #1C3829;
+  border-radius: 20px 20px 0 0;
+  padding: 20px 20px 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+.weekly-header-done {
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 28px 20px 24px;
+  text-align: center;
+}
+.weekly-header-brand {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.weekly-logo-mark {
+  font-size: 20px;
+  font-weight: 700;
+  color: #C4623A;
+  letter-spacing: -1px;
+  line-height: 1;
+}
+.weekly-header-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: rgba(255,255,255,0.85);
+}
+.weekly-counter {
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(255,255,255,0.5);
+}
+
+/* ── Progress bar ── */
+.weekly-progress {
+  display: flex;
+  gap: 4px;
+  padding: 0 20px 14px;
+  background: #1C3829;
+  flex-shrink: 0;
+}
+.weekly-progress-seg {
+  flex: 1;
+  height: 3px;
+  border-radius: 2px;
+  background: rgba(255,255,255,0.18);
+  transition: background 0.3s;
+}
+.weekly-progress-seg-done { background: #C4623A; }
+
+/* ── Body ── */
+.weekly-body {
+  padding: 20px 16px 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* ── Intro screen ── */
+.weekly-intro-title {
+  font-size: 28px;
+  font-weight: 700;
+  color: #2A1F14;
+  letter-spacing: -0.5px;
+  line-height: 1.2;
+}
+.weekly-intro-sub {
+  font-size: 13px;
+  color: #A09080;
+  line-height: 1.55;
+}
+.weekly-intro-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 6px;
+}
+.weekly-intro-actions .weekly-btn-secondary { flex: 1; }
+.weekly-intro-actions .weekly-btn-primary   { flex: 2; }
+
+/* ── Dossier card ── */
+.weekly-dossier-card {
+  background: #fff;
+  border: 0.5px solid #DDD8CE;
+  border-radius: 14px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.weekly-card-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: #C0B8A8;
+  letter-spacing: 0.7px;
+  line-height: 1.4;
+}
+.weekly-card-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #2A1F14;
+  line-height: 1.3;
+}
+.weekly-card-org {
+  font-size: 13px;
+  color: #A09080;
+  margin-top: 1px;
+}
+
+/* ── Actions label ── */
+.weekly-actions-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: #C0B8A8;
+  letter-spacing: 0.7px;
+  margin-top: 2px;
+}
+
+/* ── Action cards ── */
+.weekly-action {
+  background: #fff;
+  border: 0.5px solid #DDD8CE;
+  border-radius: 10px;
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.weekly-action:active { background: #F0EBE3; }
+.weekly-action-open   { background: #F7F5F0; }
+.weekly-action-delete { border-color: #F0D8D8; }
+
+.weekly-action-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.weekly-dot-green { background: #1C3829; }
+.weekly-dot-amber { background: #B45309; }
+.weekly-dot-sand  { background: #DDD8CE; }
+.weekly-dot-terra { background: #C4623A; }
+
+.weekly-action-text { display: flex; flex-direction: column; gap: 2px; }
+
+.weekly-action-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #2A1F14;
+  line-height: 1.3;
+}
+.weekly-action-title-delete { color: #C4623A; }
+.weekly-action-sub {
+  font-size: 12px;
+  color: #A09080;
+}
+
+/* ── Date picker row ── */
+.weekly-date-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.weekly-date-input {
+  flex: 1;
+  font-size: 13px;
+  padding: 8px 10px;
+}
+
+/* ── Confirmation row ── */
+.weekly-confirm-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.weekly-confirm-text {
+  flex: 1;
+  font-size: 13px;
+  color: #C0392B;
+  font-weight: 500;
+}
+
+/* ── Buttons ── */
+.weekly-btn-primary {
+  background: #1C3829;
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  padding: 13px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.weekly-btn-primary:disabled { opacity: 0.38; cursor: default; }
+.weekly-btn-primary:active   { opacity: 0.82; }
+
+.weekly-btn-secondary {
+  background: #F0EBE3;
+  color: #2A1F14;
+  border: none;
+  border-radius: 10px;
+  padding: 13px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.weekly-btn-secondary:active { opacity: 0.75; }
+
+.weekly-btn-danger {
+  background: #FFF0E8;
+  color: #C0392B;
+  border: none;
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.weekly-btn-danger:active { opacity: 0.75; }
+
+.weekly-btn-sm   { padding: 10px 14px; font-size: 13px; }
+.weekly-btn-full { width: 100%; }
+
+/* ── Done screen ── */
+.weekly-done-check-circle {
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  background: #C4623A;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.weekly-done-title {
+  font-size: 22px;
+  font-weight: 700;
+  color: #fff;
+}
+.weekly-done-sub {
+  font-size: 13px;
+  color: rgba(247,245,240,0.55);
+  line-height: 1.5;
+  max-width: 280px;
+}
