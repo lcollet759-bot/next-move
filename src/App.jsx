@@ -16,156 +16,196 @@ import ModeFocus from './pages/ModeFocus'
 import Planning from './pages/Planning'
 
 // ── Revue hebdomadaire Q4 ─────────────────────────────────────────────────────
+function weeksSince(dateStr) {
+  if (!dateStr) return null
+  const diff = Date.now() - new Date(dateStr).getTime()
+  return Math.max(0, Math.floor(diff / (7 * 24 * 60 * 60 * 1000)))
+}
+
 function WeeklyReviewModal({ dossiers, onClose, mettreAJourDossier, supprimerDossier }) {
-  const [items,      setItems]      = useState(dossiers)
-  const [planifId,   setPlanifId]   = useState(null)
-  const [planifDate, setPlanifDate] = useState('')
+  const [step,          setStep]          = useState('intro')
+  const [currentIndex,  setCurrentIndex]  = useState(0)
+  const [items]                           = useState(dossiers)
+  const [planifOpen,    setPlanifOpen]    = useState(false)
+  const [planifDate,    setPlanifDate]    = useState('')
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [stats,         setStats]         = useState({ promus: 0, supprimes: 0, reportes: 0 })
 
-  const remove = (id) => setItems(prev => prev.filter(d => d.id !== id))
+  const total   = items.length
+  const current = items[currentIndex]
 
-  const handleTraiter = async (dossier) => {
-    await mettreAJourDossier(dossier.id, { importance: true })
-    remove(dossier.id)
+  const advance = (stat) => {
+    if (stat) setStats(s => ({ ...s, [stat]: s[stat] + 1 }))
+    setPlanifOpen(false); setPlanifDate(''); setConfirmDelete(false)
+    if (currentIndex < total - 1) setCurrentIndex(i => i + 1)
+    else setStep('done')
   }
 
-  const handlePlanifier = (dossier) => {
-    setPlanifId(dossier.id)
-    setPlanifDate('')
+  const handlePrioriser = async () => {
+    try { await mettreAJourDossier(current.id, { importance: true }) } catch {}
+    advance('promus')
   }
-
-  const handlePlanifierConfirm = async (dossier) => {
+  const handlePlanifierConfirm = async () => {
     if (!planifDate) return
-    await mettreAJourDossier(dossier.id, { echeance: planifDate })
-    setPlanifId(null)
-    remove(dossier.id)
+    try { await mettreAJourDossier(current.id, { echeance: planifDate, importance: true }) } catch {}
+    advance('reportes')
+  }
+  const handleReporter = () => advance(null)
+  const handleSupprimerConfirm = async () => {
+    try { await supprimerDossier(current.id) } catch {}
+    advance('supprimes')
   }
 
-  const handleSupprimer = async (dossier) => {
-    await supprimerDossier(dossier.id)
-    remove(dossier.id)
-  }
+  const weeks = current ? weeksSince(current.updated_at || current.created_at) : null
+
+  const statLine = [
+    stats.promus    > 0 && `${stats.promus} promu${stats.promus > 1 ? 's' : ''}`,
+    stats.supprimes > 0 && `${stats.supprimes} supprimé${stats.supprimes > 1 ? 's' : ''}`,
+    stats.reportes  > 0 && `${stats.reportes} reporté${stats.reportes > 1 ? 's' : ''}`,
+  ].filter(Boolean).join(' · ') || 'Aucun changement.'
 
   return (
-    <div className="overlay" onClick={onClose}>
-      <div className="sheet wr-sheet" onClick={e => e.stopPropagation()}>
+    <div className="weekly-overlay">
+      <div className="weekly-sheet">
 
-        {/* En-tête */}
-        <div className="wr-header">
-          <div>
-            <h3 className="wr-title">Revue du lundi</h3>
-            <p className="wr-sub">
-              {items.length > 0
-                ? `${items.length} dossier${items.length > 1 ? 's' : ''} sans priorité — que voulez-vous en faire ?`
-                : 'Tous les dossiers ont été traités.'}
-            </p>
-          </div>
-          <button className="wr-close" onClick={onClose} aria-label="Fermer">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-            </svg>
-          </button>
-        </div>
-
-        {/* État vide */}
-        {items.length === 0 ? (
-          <div className="wr-done">
-            <div className="wr-done-check">
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round">
-                <polyline points="20 6 9 17 4 12"/>
-              </svg>
-            </div>
-            <p style={{ fontSize: 14, color: 'var(--text-secondary)', marginBottom: 20 }}>
-              Beau travail — liste "Plus tard" traitée.
-            </p>
-            <button className="btn btn-primary btn-full" onClick={onClose}>Fermer</button>
-          </div>
-        ) : (
-          <div className="wr-list">
-            {items.map(d => (
-              <div key={d.id} className="wr-item">
-                <div className="wr-item-info">
-                  <span className="wr-item-titre">{d.titre}</span>
-                  {d.organisme && <span className="wr-item-org">{d.organisme}</span>}
-                </div>
-
-                {/* Sélecteur de date inline pour Planifier */}
-                {planifId === d.id ? (
-                  <div className="wr-planif">
-                    <input
-                      type="date"
-                      className="input"
-                      style={{ flex: 1, fontSize: 13, padding: '8px 10px' }}
-                      value={planifDate}
-                      onChange={e => setPlanifDate(e.target.value)}
-                      autoFocus
-                    />
-                    <button
-                      className="btn btn-primary btn-sm"
-                      onClick={() => handlePlanifierConfirm(d)}
-                      disabled={!planifDate}
-                    >OK</button>
-                    <button
-                      className="btn btn-ghost btn-sm"
-                      onClick={() => setPlanifId(null)}
-                    >✕</button>
-                  </div>
-                ) : (
-                  <div className="wr-actions">
-                    <button className="wr-btn wr-traiter"  onClick={() => handleTraiter(d)}>Traiter</button>
-                    <button className="wr-btn wr-planif"   onClick={() => handlePlanifier(d)}>Planifier</button>
-                    <button className="wr-btn wr-supprimer" onClick={() => handleSupprimer(d)}>Supprimer</button>
-                  </div>
-                )}
+        {/* ── ÉCRAN 1 — Intro ───────────────────────────────────────── */}
+        {step === 'intro' && (
+          <>
+            <div className="weekly-header">
+              <div className="weekly-header-brand">
+                <span className="weekly-logo-mark">»</span>
+                <span className="weekly-header-title">Revue de la semaine</span>
               </div>
-            ))}
-          </div>
+            </div>
+            <div className="weekly-body">
+              <p className="weekly-intro-title">Bon lundi.</p>
+              <p className="weekly-intro-sub">
+                Tu as <strong>{total}</strong> dossier{total > 1 ? 's' : ''} "Plus tard"
+                {' '}qui {total > 1 ? 'attendent' : 'attend'} une décision. Ça prend 2 minutes.
+              </p>
+              <div className="weekly-intro-actions">
+                <button className="weekly-btn-secondary" onClick={onClose}>Plus tard</button>
+                <button className="weekly-btn-primary" onClick={() => setStep('review')}>On y va →</button>
+              </div>
+            </div>
+          </>
         )}
-      </div>
 
-      <style>{`
-        .wr-sheet { max-height: 85vh; display: flex; flex-direction: column; }
-        .wr-header {
-          display: flex; justify-content: space-between; align-items: flex-start;
-          margin-bottom: 18px; gap: 12px; flex-shrink: 0;
-        }
-        .wr-title { font-size: 18px; font-weight: 700; color: var(--text); margin-bottom: 4px; }
-        .wr-sub   { font-size: 13px; color: var(--text-muted); line-height: 1.4; }
-        .wr-close {
-          flex-shrink: 0; width: 32px; height: 32px; border-radius: 50%;
-          border: none; background: var(--gray-light); color: var(--text-muted);
-          display: flex; align-items: center; justify-content: center; cursor: pointer;
-          transition: background 0.15s;
-        }
-        .wr-close:hover { background: var(--border); }
-        .wr-list { overflow-y: auto; flex: 1; }
-        .wr-item {
-          padding: 12px 0;
-          border-bottom: 1px solid var(--border);
-          display: flex; flex-direction: column; gap: 8px;
-        }
-        .wr-item:last-child { border-bottom: none; }
-        .wr-item-info { display: flex; flex-direction: column; gap: 2px; }
-        .wr-item-titre { font-size: 14px; font-weight: 500; color: var(--text); line-height: 1.3; }
-        .wr-item-org   { font-size: 12px; color: var(--text-muted); }
-        .wr-actions    { display: flex; gap: 6px; }
-        .wr-planif     { display: flex; gap: 6px; align-items: center; }
-        .wr-btn {
-          flex: 1; padding: 8px 4px; border: none; border-radius: var(--radius-sm);
-          font-size: 12px; font-weight: 600; cursor: pointer; transition: opacity 0.15s;
-        }
-        .wr-btn:active { opacity: 0.75; }
-        .wr-traiter   { background: var(--green-light); color: var(--green); }
-        .wr-planif    { background: var(--surface); color: var(--text); border: 1px solid var(--border) !important; }
-        .wr-supprimer { background: var(--red-light,  #fef2f2); color: var(--red); }
-        .wr-done {
-          display: flex; flex-direction: column; align-items: center;
-          padding: 20px 0 4px; text-align: center;
-        }
-        .wr-done-check {
-          width: 52px; height: 52px; border-radius: 50%; background: var(--green);
-          display: flex; align-items: center; justify-content: center; margin-bottom: 14px;
-        }
-      `}</style>
+        {/* ── ÉCRAN 2 — Revue dossier par dossier ──────────────────── */}
+        {step === 'review' && current && (
+          <>
+            <div className="weekly-header">
+              <div className="weekly-header-brand">
+                <span className="weekly-logo-mark">»</span>
+                <span className="weekly-header-title">Revue de la semaine</span>
+              </div>
+              <span className="weekly-counter">{currentIndex + 1} / {total}</span>
+            </div>
+
+            <div className="weekly-progress">
+              {items.map((_, i) => (
+                <div key={i} className={`weekly-progress-seg${i < currentIndex ? ' weekly-progress-seg-done' : ''}`} />
+              ))}
+            </div>
+
+            <div className="weekly-body">
+              <div className="weekly-dossier-card">
+                <p className="weekly-card-label">
+                  PLUS TARD
+                  {weeks !== null && ` · SANS ACTION DEPUIS ${weeks < 1 ? 'MOINS D\'1 SEMAINE' : `${weeks} SEMAINE${weeks > 1 ? 'S' : ''}`}`}
+                </p>
+                <p className="weekly-card-title">{current.titre}</p>
+                {current.organisme && <p className="weekly-card-org">{current.organisme}</p>}
+              </div>
+
+              <p className="weekly-actions-label">QUE FAIRE DE CE DOSSIER ?</p>
+
+              {/* Action 1 — Prioriser */}
+              <button className="weekly-action" onClick={handlePrioriser}>
+                <span className="weekly-action-dot weekly-dot-green" />
+                <div className="weekly-action-text">
+                  <p className="weekly-action-title">C'est important → le traiter</p>
+                  <p className="weekly-action-sub">Passe en "Important"</p>
+                </div>
+              </button>
+
+              {/* Action 2 — Planifier */}
+              <button
+                className={`weekly-action${planifOpen ? ' weekly-action-open' : ''}`}
+                onClick={() => { setPlanifOpen(o => !o); setConfirmDelete(false) }}
+              >
+                <span className="weekly-action-dot weekly-dot-amber" />
+                <div className="weekly-action-text">
+                  <p className="weekly-action-title">Planifier à une date précise</p>
+                  <p className="weekly-action-sub">Je te rappelle à cette date</p>
+                </div>
+              </button>
+              {planifOpen && (
+                <div className="weekly-date-row">
+                  <input
+                    type="date"
+                    className="input weekly-date-input"
+                    value={planifDate}
+                    onChange={e => setPlanifDate(e.target.value)}
+                    autoFocus
+                  />
+                  <button className="weekly-btn-primary weekly-btn-sm" onClick={handlePlanifierConfirm} disabled={!planifDate}>OK</button>
+                  <button className="weekly-btn-secondary weekly-btn-sm" onClick={() => setPlanifOpen(false)}>✕</button>
+                </div>
+              )}
+
+              {/* Action 3 — Reporter */}
+              <button className="weekly-action" onClick={handleReporter}>
+                <span className="weekly-action-dot weekly-dot-sand" />
+                <div className="weekly-action-text">
+                  <p className="weekly-action-title">Revient lundi prochain</p>
+                  <p className="weekly-action-sub">Reporter à la prochaine revue</p>
+                </div>
+              </button>
+
+              {/* Action 4 — Supprimer */}
+              <button
+                className={`weekly-action weekly-action-delete${confirmDelete ? ' weekly-action-open' : ''}`}
+                onClick={() => { setConfirmDelete(o => !o); setPlanifOpen(false) }}
+              >
+                <span className="weekly-action-dot weekly-dot-terra" />
+                <div className="weekly-action-text">
+                  <p className="weekly-action-title weekly-action-title-delete">Ce n'est plus pertinent</p>
+                  <p className="weekly-action-sub">Supprimer le dossier</p>
+                </div>
+              </button>
+              {confirmDelete && (
+                <div className="weekly-confirm-row">
+                  <p className="weekly-confirm-text">Supprimer définitivement ?</p>
+                  <button className="weekly-btn-danger weekly-btn-sm" onClick={handleSupprimerConfirm}>Supprimer</button>
+                  <button className="weekly-btn-secondary weekly-btn-sm" onClick={() => setConfirmDelete(false)}>Annuler</button>
+                </div>
+              )}
+            </div>
+          </>
+        )}
+
+        {/* ── ÉCRAN 3 — Fin ────────────────────────────────────────── */}
+        {step === 'done' && (
+          <>
+            <div className="weekly-header weekly-header-done">
+              <div className="weekly-done-check-circle">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round">
+                  <polyline points="20 6 9 17 4 12"/>
+                </svg>
+              </div>
+              <p className="weekly-done-title">Revue terminée.</p>
+              <p className="weekly-done-sub">{statLine} Ta tête est plus légère.</p>
+            </div>
+            <div className="weekly-body">
+              <button className="weekly-btn-primary weekly-btn-full" onClick={onClose}>
+                Démarrer la semaine →
+              </button>
+            </div>
+          </>
+        )}
+
+      </div>
     </div>
   )
 }
@@ -191,10 +231,11 @@ function AuthenticatedApp() {
 
   useEffect(() => {
     if (loading) return
-    if (!shouldShowWeeklyReview()) return
+    const debug = window.location.search.includes('debug=weekly')
+    if (!debug && !shouldShowWeeklyReview()) return
 
     const q4 = dossiers.filter(d => d.quadrant === 4 && d.etat !== 'clos')
-    markWeeklyReviewShown()   // marquer immédiatement pour éviter les doublons
+    if (!debug) markWeeklyReviewShown()   // marquer immédiatement pour éviter les doublons
     if (q4.length === 0) return
 
     setReviewDossiers(q4)
