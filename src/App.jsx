@@ -5,6 +5,7 @@ import { useApp } from './context/AppContext'
 import { shouldShowWeeklyReview, markWeeklyReviewShown } from './services/notifications'
 import Navigation from './components/Navigation'
 import ScrollToTop from './components/ScrollToTop'
+import DossierSheet from './components/DossierSheet'
 import Login from './pages/Login'
 import Aujourdhui from './pages/Aujourdhui'
 import Capturer from './pages/Capturer'
@@ -23,13 +24,14 @@ function weeksSince(dateStr) {
 }
 
 function WeeklyReviewModal({ dossiers, onClose, mettreAJourDossier, supprimerDossier }) {
-  const [step,          setStep]          = useState('intro')
-  const [currentIndex,  setCurrentIndex]  = useState(0)
-  const [items]                           = useState(dossiers)
-  const [planifOpen,    setPlanifOpen]    = useState(false)
-  const [planifDate,    setPlanifDate]    = useState('')
-  const [confirmDelete, setConfirmDelete] = useState(false)
-  const [stats,         setStats]         = useState({ promus: 0, supprimes: 0, reportes: 0 })
+  const [step,            setStep]            = useState('intro')
+  const [currentIndex,    setCurrentIndex]    = useState(0)
+  const [items]                               = useState(dossiers)
+  const [planifOpen,      setPlanifOpen]      = useState(false)
+  const [planifDate,      setPlanifDate]      = useState('')
+  const [confirmDelete,   setConfirmDelete]   = useState(false)
+  const [stats,           setStats]           = useState({ promus: 0, supprimes: 0, reportes: 0 })
+  const [dossierSheetId,  setDossierSheetId]  = useState(null)
 
   const total   = items.length
   const current = items[currentIndex]
@@ -43,7 +45,7 @@ function WeeklyReviewModal({ dossiers, onClose, mettreAJourDossier, supprimerDos
 
   const handlePrioriser = async () => {
     try { await mettreAJourDossier(current.id, { importance: true }) } catch {}
-    advance('promus')
+    setDossierSheetId(current.id)   // ouvre le sheet — advance se déclenchera à la fermeture
   }
   const handlePlanifierConfirm = async () => {
     if (!planifDate) return
@@ -206,6 +208,18 @@ function WeeklyReviewModal({ dossiers, onClose, mettreAJourDossier, supprimerDos
         )}
 
       </div>
+
+      {/* DossierSheet au-dessus du modal (z-index 300 > 200) */}
+      {dossierSheetId && (
+        <DossierSheet
+          dossierId={dossierSheetId}
+          onClose={() => {
+            setDossierSheetId(null)
+            advance('promus')
+          }}
+        />
+      )}
+
     </div>
   )
 }
