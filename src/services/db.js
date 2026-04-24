@@ -6,6 +6,73 @@
 
 import { supabase } from './supabase.js'
 
+// ─── AUTH ────────────────────────────────────────────────────────────────────
+
+export const signIn = async (email, password) => {
+  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+  if (error) raise(error, 'signIn');
+  return data;
+};
+
+export const signOut = async () => {
+  const { error } = await supabase.auth.signOut();
+  if (error) raise(error, 'signOut');
+};
+
+export const getCurrentUser = async () => {
+  const { data: { user } } = await supabase.auth.getUser();
+  return user; // null si non connecté
+};
+
+export const onAuthStateChange = (callback) => {
+  return supabase.auth.onAuthStateChange(callback);
+};
+
+// ─── PROFIL UTILISATEUR ──────────────────────────────────────────────────────
+
+export const getUserProfile = async (userId) => {
+  const { data, error } = await supabase
+    .from('users')
+    .select('*')
+    .eq('id', userId)
+    .single();
+  if (error) raise(error, 'getUserProfile');
+  return data;
+};
+
+export const updateUserProfile = async (userId, updates) => {
+  const { data, error } = await supabase
+    .from('users')
+    .update(updates)
+    .eq('id', userId)
+    .select()
+    .single();
+  if (error) raise(error, 'updateUserProfile');
+  return data;
+};
+
+export const updateCleApi = async (userId, cleApi) => {
+  return updateUserProfile(userId, { cle_api_anthropic: cleApi });
+};
+
+// Admin uniquement
+export const getAllUsers = async () => {
+  const { data, error } = await supabase
+    .from('users')
+    .select('id, email, prenom, role, actif, created_at')
+    .order('created_at', { ascending: true });
+  if (error) raise(error, 'getAllUsers');
+  return data;
+};
+
+export const toggleUserActif = async (userId, actif) => {
+  const { error } = await supabase
+    .from('users')
+    .update({ actif })
+    .eq('id', userId);
+  if (error) raise(error, 'toggleUserActif');
+};
+
 // ── Helpers camelCase ↔ snake_case ────────────────────────────────────────
 
 function toRow(d) {
@@ -76,66 +143,73 @@ function raise(error, ctx) {
 
 // ── Dossiers ──────────────────────────────────────────────────────────────
 
-export async function getDossiers() {
+export async function getDossiers(userId) {
   const { data, error } = await supabase
     .from('dossiers')
     .select('*')
+    .eq('user_id', userId)
     .order('created_at', { ascending: false })
   raise(error, 'getDossiers')
   return (data ?? []).map(fromRow)
 }
 
-export async function getDossier(id) {
+export async function getDossier(id, userId) {
   const { data, error } = await supabase
     .from('dossiers')
     .select('*')
     .eq('id', id)
+    .eq('user_id', userId)
     .single()
   if (error?.code === 'PGRST116') return null
   raise(error, 'getDossier')
   return data ? fromRow(data) : null
 }
 
-export async function saveDossier(dossier) {
+export async function saveDossier(dossier, userId) {
+  const row = { ...toRow(dossier), user_id: userId }
   const { error } = await supabase
     .from('dossiers')
-    .upsert(toRow(dossier), { onConflict: 'id' })
+    .upsert(row, { onConflict: 'id' })
   raise(error, 'saveDossier')
 }
 
-export async function deleteDossier(id) {
+export async function deleteDossier(id, userId) {
   const { error } = await supabase
     .from('dossiers')
     .delete()
     .eq('id', id)
+    .eq('user_id', userId)
   raise(error, 'deleteDossier')
 }
 
 // ── Journal ───────────────────────────────────────────────────────────────
 
-export async function getJournal() {
+export async function getJournal(userId) {
   const { data, error } = await supabase
     .from('journal')
     .select('*')
+    .eq('user_id', userId)
     .order('timestamp', { ascending: false })
   raise(error, 'getJournal')
   return (data ?? []).map(fromJournalRow)
 }
 
-export async function getJournalForDossier(dossierId) {
+export async function getJournalForDossier(dossierId, userId) {
   const { data, error } = await supabase
     .from('journal')
     .select('*')
     .eq('dossier_id', dossierId)
+    .eq('user_id', userId)
     .order('timestamp', { ascending: false })
   raise(error, 'getJournalForDossier')
   return (data ?? []).map(fromJournalRow)
 }
 
-export async function addJournalEntry(entry) {
+export async function addJournalEntry(entry, userId) {
+  const row = { ...toJournalRow(entry), user_id: userId }
   const { error } = await supabase
     .from('journal')
-    .insert(toJournalRow(entry))
+    .insert(row)
   raise(error, 'addJournalEntry')
 }
 
@@ -165,29 +239,32 @@ function fromEtapeRow(r) {
   }
 }
 
-export async function getEtapesForDossier(dossierId) {
+export async function getEtapesForDossier(dossierId, userId) {
   const { data, error } = await supabase
     .from('etapes')
     .select('*')
     .eq('dossier_id', dossierId)
+    .eq('user_id', userId)
     .order('date',       { ascending: true })
     .order('created_at', { ascending: true })
   raise(error, 'getEtapesForDossier')
   return (data ?? []).map(fromEtapeRow)
 }
 
-export async function addEtape(etape) {
+export async function addEtape(etape, userId) {
+  const row = { ...toEtapeRow(etape), user_id: userId }
   const { error } = await supabase
     .from('etapes')
-    .insert(toEtapeRow(etape))
+    .insert(row)
   raise(error, 'addEtape')
 }
 
-export async function deleteEtape(id) {
+export async function deleteEtape(id, userId) {
   const { error } = await supabase
     .from('etapes')
     .delete()
     .eq('id', id)
+    .eq('user_id', userId)
   raise(error, 'deleteEtape')
 }
 
@@ -213,20 +290,22 @@ function fromPlanningRow(r) {
   }
 }
 
-export async function getPlanningForDate(date) {
+export async function getPlanningForDate(date, userId) {
   const { data, error } = await supabase
     .from('plannings')
     .select('*')
     .eq('date', date)
+    .eq('user_id', userId)
     .maybeSingle()
   raise(error, 'getPlanningForDate')
   return data ? fromPlanningRow(data) : null
 }
 
-export async function savePlanning(planning) {
+export async function savePlanning(planning, userId) {
+  const row = { ...toPlanningRow(planning), user_id: userId }
   const { error } = await supabase
     .from('plannings')
-    .upsert(toPlanningRow(planning), { onConflict: 'date' })
+    .upsert(row, { onConflict: 'date' })
   raise(error, 'savePlanning')
 }
 
@@ -258,27 +337,30 @@ function fromRoutineRow(r) {
   }
 }
 
-export async function getRoutines() {
+export async function getRoutines(userId) {
   const { data, error } = await supabase
     .from('routines')
     .select('*')
+    .eq('user_id', userId)
     .eq('actif', true)
     .order('created_at', { ascending: true })
   raise(error, 'getRoutines')
   return (data ?? []).map(fromRoutineRow)
 }
 
-export async function saveRoutine(routine) {
+export async function saveRoutine(routine, userId) {
+  const row = { ...toRoutineRow(routine), user_id: userId }
   const { error } = await supabase
     .from('routines')
-    .upsert(toRoutineRow(routine), { onConflict: 'id' })
+    .upsert(row, { onConflict: 'id' })
   raise(error, 'saveRoutine')
 }
 
-export async function deleteRoutine(id) {
+export async function deleteRoutine(id, userId) {
   const { error } = await supabase
     .from('routines')
     .delete()
     .eq('id', id)
+    .eq('user_id', userId)
   raise(error, 'deleteRoutine')
 }
