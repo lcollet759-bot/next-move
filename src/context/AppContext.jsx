@@ -201,26 +201,40 @@ function reducer(state, action) {
 export function AppProvider({ children }) {
   const [state, dispatch] = useReducer(reducer, init)
 
-  const [authUser, setAuthUser]       = useState(null)
-  const [userProfile, setUserProfile] = useState(null)
-  const [authLoading, setAuthLoading] = useState(true)
+  const [authUser, setAuthUser]             = useState(null)
+  const [userProfile, setUserProfile]       = useState(null)
+  const [authLoading, setAuthLoading]       = useState(true)
+  const [authErrorMessage, setAuthErrorMessage] = useState('')
 
   // ── Auth ──────────────────────────────────────────────────────────────────
   useEffect(() => {
     getCurrentUser().then(async (user) => {
       if (user) {
-        setAuthUser(user)
         const profile = await getUserProfile(user.id)
-        setUserProfile(profile)
+        if (!profile?.actif) {
+          await signOut()
+          setAuthErrorMessage('Ton compte a été désactivé. Contacte l\'administrateur.')
+        } else {
+          setAuthUser(user)
+          setUserProfile(profile)
+        }
       }
       setAuthLoading(false)
     })
 
     const { data: { subscription } } = onAuthStateChange(async (event, session) => {
       if (session?.user) {
-        setAuthUser(session.user)
         const profile = await getUserProfile(session.user.id)
+        if (!profile?.actif) {
+          await signOut()
+          setAuthUser(null)
+          setUserProfile(null)
+          setAuthErrorMessage('Ton compte a été désactivé. Contacte l\'administrateur.')
+          return
+        }
+        setAuthUser(session.user)
         setUserProfile(profile)
+        setAuthErrorMessage('')
       } else {
         setAuthUser(null)
         setUserProfile(null)
@@ -584,6 +598,7 @@ export function AppProvider({ children }) {
       authUser,
       userProfile,
       authLoading,
+      authErrorMessage,
       logout,
       setUserProfile,
     }}>

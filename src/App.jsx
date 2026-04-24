@@ -15,6 +15,7 @@ import Journal from './pages/Journal'
 import Reglages from './pages/Reglages'
 import ModeFocus from './pages/ModeFocus'
 import Planning from './pages/Planning'
+import Admin from './pages/Admin'
 
 // ── Revue hebdomadaire Q4 ─────────────────────────────────────────────────────
 function weeksSince(dateStr) {
@@ -226,7 +227,7 @@ function WeeklyReviewModal({ dossiers, onClose, mettreAJourDossier, supprimerDos
 
 // ── App ───────────────────────────────────────────────────────────────────────
 export default function App() {
-  const { authUser, authLoading, userProfile, logout } = useApp()
+  const { authUser, authLoading, userProfile, logout, authErrorMessage } = useApp()
   const [showInscription, setShowInscription] = useState(false)
 
   // Pendant la vérification de session
@@ -263,7 +264,7 @@ export default function App() {
     if (showInscription) {
       return <Inscription onNavigateToLogin={() => setShowInscription(false)} />
     }
-    return <Login onNavigateToInscription={() => setShowInscription(true)} />
+    return <Login onNavigateToInscription={() => setShowInscription(true)} authErrorMessage={authErrorMessage} />
   }
 
   return <AuthenticatedApp />
@@ -300,6 +301,7 @@ function AuthenticatedApp() {
           <Route path="/reglages"     element={<Reglages />} />
           <Route path="/planning"     element={<Planning />} />
           <Route path="/focus"        element={<ModeFocus />} />
+          <Route path="/admin"        element={<Admin />} />
         </Routes>
       </main>
       <Navigation />

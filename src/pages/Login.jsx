@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { signIn } from '../services/db';
 
-export default function Login({ onNavigateToInscription }) {
+export default function Login({ onNavigateToInscription, authErrorMessage }) {
   const [email, setEmail]               = useState('');
   const [password, setPassword]         = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -160,8 +160,8 @@ export default function Login({ onNavigateToInscription }) {
           </button>
         </div>
 
-        {/* Message d'erreur */}
-        {error && (
+        {/* Message d'erreur (compte désactivé ou erreur auth) */}
+        {(authErrorMessage || error) && (
           <div style={{
             color: '#C4623A',
             fontSize: 13,
@@ -172,7 +172,7 @@ export default function Login({ onNavigateToInscription }) {
             borderRadius: 8,
             border: '0.5px solid #C4623A',
           }}>
-            {error}
+            {authErrorMessage || error}
           </div>
         )}
 

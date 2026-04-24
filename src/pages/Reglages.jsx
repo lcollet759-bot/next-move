@@ -303,6 +303,23 @@ export default function Reglages() {
           />
         </div>
 
+        {/* ── Groupe Admin (visible uniquement pour les admins) ── */}
+        {userProfile?.role === 'admin' && (
+          <div className="rgl-group">
+            <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: '#A09080', margin: '0', padding: '12px 16px 4px' }}>
+              Administration
+            </p>
+            <SettingsRow
+              label="Gérer les utilisateurs"
+              right={<IconChevron />}
+              onClick={() => navigate('/admin')}
+              first
+              last
+              noBorder
+            />
+          </div>
+        )}
+
         {/* ── Groupe 3 : Déconnexion ── */}
         <div className="rgl-group">
           <SettingsRow

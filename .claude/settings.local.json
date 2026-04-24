@@ -8,7 +8,17 @@
       "Bash(git merge:*)",
       "Bash(git push:*)",
       "Bash(git commit:*)",
-      "Bash(git revert:*)"
+      "Bash(git revert:*)",
+      "Bash(python3 -c ' *)",
+      "Bash(node -e \"const fs = require\\('fs'\\); const lines = fs.readFileSync\\('C:/Users/LudoC/Desktop/secretaire-ia/src/services/claude.js', 'utf8'\\).split\\('\\\\n'\\); lines.slice\\(143, 158\\).forEach\\(\\(l, i\\) => console.log\\(i+144, JSON.stringify\\(l\\)\\)\\);\")",
+      "Bash(npm install *)",
+      "Bash(python -c \"from PIL import Image; print\\('PIL OK'\\)\")",
+      "Bash(python -m pip install pillow)",
+      "Bash(py --version)",
+      "Bash(py -m pip install pillow)",
+      "Bash(node -e \"const pkg = require\\('./package.json'\\); console.log\\(Object.keys\\({...pkg.dependencies,...pkg.devDependencies}\\).filter\\(k => k.includes\\('pwa'\\)||k.includes\\('sharp'\\)||k.includes\\('canvas'\\)||k.includes\\('svg'\\)\\)\\)\")",
+      "Bash(node -e \"const s = require\\('sharp'\\); console.log\\('sharp ok', s.versions\\)\")",
+      "Bash(node -e \"const s = require\\('sharp'\\); console.log\\('sharp ok, svg:', s.format\\)\")"
     ]
   }
 }
