@@ -1,6 +1,7 @@
-import { createContext, useContext, useReducer, useEffect, useCallback } from 'react'
+import { createContext, useContext, useReducer, useEffect, useCallback, useState } from 'react'
 import { v4 as uuid } from 'uuid'
 import * as db from '../services/db'
+import { getCurrentUser, getUserProfile, onAuthStateChange, signOut } from '../services/db'
 import { setReminder, removeReminder, checkReminders, requestPermission, notifyEscalade } from '../services/notifications'
 
 const AppContext = createContext(null)
@@ -176,6 +177,8 @@ function reducer(state, action) {
   switch (action.type) {
     case 'LOADED':
       return { ...state, dossiers: action.dossiers, journal: action.journal, loading: false }
+    case 'RESET':
+      return { ...init, loading: false }
     case 'ADD_DOSSIER':
       return { ...state, dossiers: [action.dossier, ...state.dossiers] }
     case 'UPDATE_DOSSIER':
@@ -198,7 +201,46 @@ function reducer(state, action) {
 export function AppProvider({ children }) {
   const [state, dispatch] = useReducer(reducer, init)
 
+  const [authUser, setAuthUser]       = useState(null)
+  const [userProfile, setUserProfile] = useState(null)
+  const [authLoading, setAuthLoading] = useState(true)
+
+  // ── Auth ──────────────────────────────────────────────────────────────────
   useEffect(() => {
+    getCurrentUser().then(async (user) => {
+      if (user) {
+        setAuthUser(user)
+        const profile = await getUserProfile(user.id)
+        setUserProfile(profile)
+      }
+      setAuthLoading(false)
+    })
+
+    const { data: { subscription } } = onAuthStateChange(async (event, session) => {
+      if (session?.user) {
+        setAuthUser(session.user)
+        const profile = await getUserProfile(session.user.id)
+        setUserProfile(profile)
+      } else {
+        setAuthUser(null)
+        setUserProfile(null)
+        dispatch({ type: 'RESET' })
+      }
+    })
+
+    return () => subscription.unsubscribe()
+  }, [])
+
+  const logout = async () => {
+    await signOut()
+    setAuthUser(null)
+    setUserProfile(null)
+  }
+
+  // ── Chargement des données (déclenché quand authUser est connu) ────────────
+  useEffect(() => {
+    if (!authUser) return
+
     // ── Migration one-shot depuis IndexedDB ──────────────────────────────────
     async function migrateFromIndexedDB() {
       const MIGRATION_KEY = 'nm-supabase-migrated'
@@ -210,8 +252,8 @@ export function AppProvider({ children }) {
         const oldJournal  = await idb.getAll('journal')
         if (oldDossiers.length > 0) {
           // Upsert en batch pour éviter les conflits
-          await Promise.all(oldDossiers.map(d => db.saveDossier(d)))
-          await Promise.all(oldJournal.map(j => db.addJournalEntry(j)))
+          await Promise.all(oldDossiers.map(d => db.saveDossier(d, authUser?.id)))
+          await Promise.all(oldJournal.map(j => db.addJournalEntry(j, authUser?.id)))
           console.log(`[Migration] ${oldDossiers.length} dossiers, ${oldJournal.length} entrées migrés vers Supabase`)
         }
         idb.close()
@@ -226,7 +268,10 @@ export function AppProvider({ children }) {
       // Migrer les données IndexedDB existantes (une seule fois)
       await migrateFromIndexedDB()
 
-      let [dossiers, journal] = await Promise.all([db.getDossiers(), db.getJournal()])
+      let [dossiers, journal] = await Promise.all([
+        db.getDossiers(authUser?.id),
+        db.getJournal(authUser?.id),
+      ])
 
       // ── Recalcul quotidien : Eisenhower + statuts automatiques ────────────
       const lastRecalc = localStorage.getItem(RECALC_KEY)
@@ -263,7 +308,7 @@ export function AppProvider({ children }) {
             }
             dossiers = dossiers.map(d => d.id === uid ? updated : d)
 
-            const ops = [db.saveDossier(updated)]
+            const ops = [db.saveDossier(updated, authUser?.id)]
 
             // Journaliser les transitions de statut automatiques
             if (merged.etat && merged.etat !== dossier.etat) {
@@ -276,7 +321,7 @@ export function AppProvider({ children }) {
                 timestamp: now
               }
               newJournalEntries.push(entry)
-              ops.push(db.addJournalEntry(entry))
+              ops.push(db.addJournalEntry(entry, authUser?.id))
               // Tracer aussi dans l'historique dossier
               ops.push(db.addEtape({
                 id:        uuid(),
@@ -286,7 +331,7 @@ export function AppProvider({ children }) {
                 statut:    ETAT_TO_ETAPE_STATUT[merged.etat] || 'fait',
                 source:    'auto',
                 createdAt: now,
-              }))
+              }, authUser?.id))
             }
 
             // Journaliser et notifier l'escalade Q4 → Important
@@ -299,7 +344,7 @@ export function AppProvider({ children }) {
                 timestamp: now
               }
               newJournalEntries.push(entry)
-              ops.push(db.addJournalEntry(entry))
+              ops.push(db.addJournalEntry(entry, authUser?.id))
               notifyEscalade(dossier.titre)
               // Tracer dans l'historique dossier
               ops.push(db.addEtape({
@@ -310,7 +355,7 @@ export function AppProvider({ children }) {
                 statut:    'en_attente',
                 source:    'auto',
                 createdAt: now,
-              }))
+              }, authUser?.id))
             }
 
             return Promise.all(ops)
@@ -332,11 +377,11 @@ export function AppProvider({ children }) {
     const interval = setInterval(checkReminders, 60 * 60 * 1000)
     checkReminders()
     return () => clearInterval(interval)
-  }, [])
+  }, [authUser])
 
   async function log(dossierId, action, detail) {
     const entry = { id: uuid(), dossierId, action, detail, timestamp: new Date().toISOString() }
-    await db.addJournalEntry(entry)
+    await db.addJournalEntry(entry, authUser?.id)
     dispatch({ type: 'ADD_JOURNAL', entry })
   }
 
@@ -373,7 +418,7 @@ export function AppProvider({ children }) {
       updatedAt:       new Date().toISOString()
     }
 
-    await db.saveDossier(dossier)
+    await db.saveDossier(dossier, authUser?.id)
     dispatch({ type: 'ADD_DOSSIER', dossier })
     if (dossier.echeance) setReminder(dossier.id, dossier.titre, dossier.echeance)
     await log(dossier.id, 'Création', `Dossier créé via ${dossier.origine}`)
@@ -386,9 +431,9 @@ export function AppProvider({ children }) {
       statut:    'fait',
       source:    'auto',
       createdAt: dossier.createdAt,
-    })
+    }, authUser?.id)
     return dossier
-  }, [])
+  }, [state.dossiers, authUser])
 
   // ── mettreAJourDossier ────────────────────────────────────────────────────
   const mettreAJourDossier = useCallback(async (id, updates) => {
@@ -417,7 +462,7 @@ export function AppProvider({ children }) {
       updatedAt:  new Date().toISOString()
     }
 
-    await db.saveDossier(updated)
+    await db.saveDossier(updated, authUser?.id)
     dispatch({ type: 'UPDATE_DOSSIER', dossier: updated })
 
     if (updated.echeance) setReminder(updated.id, updated.titre, updated.echeance)
@@ -441,10 +486,10 @@ export function AppProvider({ children }) {
         statut:    ETAT_TO_ETAPE_STATUT[updates.etat] || 'fait',
         source:    'auto',
         createdAt: new Date().toISOString(),
-      })
+      }, authUser?.id)
     }
     return updated
-  }, [state.dossiers])
+  }, [state.dossiers, authUser])
 
   // ── Tâches ────────────────────────────────────────────────────────────────
   const toggleTache = useCallback(async (dossierId, tacheId) => {
@@ -452,11 +497,11 @@ export function AppProvider({ children }) {
     if (!dossier) return
     const taches  = dossier.taches.map(t => t.id === tacheId ? { ...t, done: !t.done } : t)
     const updated = { ...dossier, taches, updatedAt: new Date().toISOString() }
-    await db.saveDossier(updated)
+    await db.saveDossier(updated, authUser?.id)
     dispatch({ type: 'UPDATE_DOSSIER', dossier: updated })
     const tache = taches.find(t => t.id === tacheId)
     if (tache?.done) await log(dossierId, 'Tâche complétée', tache.titre)
-  }, [state.dossiers])
+  }, [state.dossiers, authUser])
 
   const ajouterTache = useCallback(async (dossierId, titre) => {
     const titreTrim = (titre || '').trim()
@@ -465,17 +510,17 @@ export function AppProvider({ children }) {
     if (!dossier) return
     const tache   = { id: uuid(), titre: titreTrim, done: false }
     const updated = { ...dossier, taches: [...dossier.taches, tache], updatedAt: new Date().toISOString() }
-    await db.saveDossier(updated)
+    await db.saveDossier(updated, authUser?.id)
     dispatch({ type: 'UPDATE_DOSSIER', dossier: updated })
-  }, [state.dossiers])
+  }, [state.dossiers, authUser])
 
   const supprimerTache = useCallback(async (dossierId, tacheId) => {
     const dossier = state.dossiers.find(d => d.id === dossierId)
     if (!dossier) return
     const updated = { ...dossier, taches: dossier.taches.filter(t => t.id !== tacheId), updatedAt: new Date().toISOString() }
-    await db.saveDossier(updated)
+    await db.saveDossier(updated, authUser?.id)
     dispatch({ type: 'UPDATE_DOSSIER', dossier: updated })
-  }, [state.dossiers])
+  }, [state.dossiers, authUser])
 
   // ── Étapes manuelles ─────────────────────────────────────────────────────
   const ajouterEtapeManuelle = useCallback(async (dossierId, { date, texte, statut }) => {
@@ -489,19 +534,19 @@ export function AppProvider({ children }) {
       statut:    statut || 'fait',
       source:    'manuel',
       createdAt: new Date().toISOString(),
-    })
-  }, [])
+    }, authUser?.id)
+  }, [authUser])
 
   const supprimerEtape = useCallback(async (etapeId) => {
-    await db.deleteEtape(etapeId)
-  }, [])
+    await db.deleteEtape(etapeId, authUser?.id)
+  }, [authUser])
 
   // ── Suppression dossier ───────────────────────────────────────────────────
   const supprimerDossier = useCallback(async (id) => {
-    await db.deleteDossier(id)
+    await db.deleteDossier(id, authUser?.id)
     removeReminder(id)
     dispatch({ type: 'DELETE_DOSSIER', id })
-  }, [])
+  }, [authUser])
 
   // ── Clé API ───────────────────────────────────────────────────────────────
   const setApiKey = useCallback((key) => {
@@ -534,7 +579,12 @@ export function AppProvider({ children }) {
       ajouterEtapeManuelle,
       supprimerEtape,
       setApiKey,
-      setOpenaiKey
+      setOpenaiKey,
+      authUser,
+      userProfile,
+      authLoading,
+      logout,
+      setUserProfile,
     }}>
       {children}
     </AppContext.Provider>

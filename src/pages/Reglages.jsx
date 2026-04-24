@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
-import { useAuth } from '../context/AuthContext'
+import { updateCleApi } from '../services/db'
 import { requestPermission } from '../services/notifications'
 
 // ── Icons ──────────────────────────────────────────────────────────────────
@@ -121,13 +121,14 @@ function Toggle({ on, onToggle }) {
 // ── Main component ─────────────────────────────────────────────────────────
 
 export default function Reglages() {
-  const { apiKey, setApiKey, dossiers, journal } = useApp()
-  const { logout } = useAuth()
-  const navigate   = useNavigate()
+  const { apiKey, setApiKey, dossiers, journal, authUser, userProfile, setUserProfile, logout } = useApp()
+  const navigate = useNavigate()
 
-  // Clé API
+  // Clé API — source : userProfile (Supabase) en priorité, sinon localStorage
+  const cleActuelle = userProfile?.cle_api_anthropic || apiKey
+
   const [editingKey, setEditingKey] = useState(false)
-  const [keyInput,   setKeyInput]   = useState(apiKey)
+  const [keyInput,   setKeyInput]   = useState(cleActuelle)
   const [keyVisible, setKeyVisible] = useState(false)
   const [keySaved,   setKeySaved]   = useState(false)
 
@@ -141,8 +142,13 @@ export default function Reglages() {
   const [showConfirmDelete, setShowConfirmDelete]   = useState(false)
   const [deleteInput,       setDeleteInput]         = useState('')
 
-  const handleSaveKey = () => {
-    setApiKey(keyInput.trim())
+  const handleSaveKey = async () => {
+    const trimmed = keyInput.trim()
+    setApiKey(trimmed)  // sync localStorage
+    if (authUser?.id) {
+      await updateCleApi(authUser.id, trimmed)
+      setUserProfile({ ...userProfile, cle_api_anthropic: trimmed })
+    }
     setKeySaved(true)
     setTimeout(() => { setKeySaved(false); setEditingKey(false) }, 1200)
   }
@@ -171,8 +177,8 @@ export default function Reglages() {
   const nbActions  = journal.filter(e => e.action === 'Tâche complétée').length
 
   // Masked key display
-  const maskedKey = apiKey
-    ? apiKey.slice(0, 10) + '••••••••••'
+  const maskedKey = cleActuelle
+    ? cleActuelle.slice(0, 10) + '••••••••••'
     : null
 
   const notifOn = notifStatus === 'granted'
@@ -183,10 +189,13 @@ export default function Reglages() {
       {/* ── Header ── */}
       <header className="rgl-header">
         <div className="rgl-avatar-row">
-          <div className="rgl-avatar">L</div>
+          <div className="rgl-avatar">
+            {userProfile?.prenom?.[0]?.toUpperCase() || 'U'}
+          </div>
           <div className="rgl-avatar-info">
-            <span className="rgl-avatar-name">Mon compte</span>
+            <span className="rgl-avatar-name">{userProfile?.prenom || 'Mon compte'}</span>
             <span className="rgl-avatar-stats">
+              {userProfile?.email && <>{userProfile.email} · </>}
               {nbDossiers} dossier{nbDossiers !== 1 ? 's' : ''} · {nbActions} action{nbActions !== 1 ? 's' : ''}
             </span>
           </div>
@@ -204,7 +213,7 @@ export default function Reglages() {
             label="Clé API Anthropic"
             sublabel={maskedKey || 'Non configurée'}
             right={<IconChevron />}
-            onClick={() => { setEditingKey(v => !v); setKeyInput(apiKey) }}
+            onClick={() => { setEditingKey(v => !v); setKeyInput(cleActuelle) }}
             first
             last={!editingKey}
           />
@@ -231,7 +240,7 @@ export default function Reglages() {
               <div className="rgl-key-actions">
                 <button
                   className="btn btn-ghost btn-sm"
-                  onClick={() => { setEditingKey(false); setKeyInput(apiKey) }}
+                  onClick={() => { setEditingKey(false); setKeyInput(cleActuelle) }}
                 >
                   Annuler
                 </button>

@@ -1,114 +1,229 @@
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { useAuth } from '../context/AuthContext'
+import { useState } from 'react';
+import { signIn } from '../services/db';
 
-export default function Login() {
-  const { login } = useAuth()
-  const navigate  = useNavigate()
+export default function Login({ onNavigateToInscription }) {
+  const [email, setEmail]               = useState('');
+  const [password, setPassword]         = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading]           = useState(false);
+  const [error, setError]               = useState('');
 
-  const [password, setPassword] = useState('')
-  const [error,    setError]    = useState('')
-  const [loading,  setLoading]  = useState(false)
-
-  const handleSubmit = async (e) => {
-    e.preventDefault()
-    if (!password) return
-
-    setError('')
-    setLoading(true)
-
-    try {
-      const ok = await login(password)
-      if (ok) {
-        navigate('/', { replace: true })
-      } else {
-        setError('Mot de passe incorrect.')
-      }
-    } catch (err) {
-      setError('Une erreur est survenue. Veuillez réessayer.')
-      console.error('[Login]', err)
-    } finally {
-      setLoading(false)
+  const handleLogin = async () => {
+    if (!email || !password) {
+      setError('Remplis tous les champs.');
+      return;
     }
-  }
+    setLoading(true);
+    setError('');
+    try {
+      await signIn(email, password);
+      // onAuthStateChange dans AppContext prend le relais automatiquement
+    } catch (err) {
+      const msg = err?.message || '';
+      if (msg.includes('network') || msg.includes('fetch')) {
+        setError('Impossible de se connecter. Vérifie ta connexion.');
+      } else {
+        setError('Email ou mot de passe incorrect.');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter') handleLogin();
+  };
 
   return (
-    <div className="login-page">
-      <div className="login-card">
-        <div className="login-logo">✦</div>
-        <h1 className="login-title">Next Move</h1>
-        <p className="login-subtitle">Saisissez votre mot de passe pour accéder à vos dossiers.</p>
-
-        <form onSubmit={handleSubmit} style={{ width: '100%' }}>
-          <label className="label">Mot de passe</label>
-          <input
-            className="input"
-            type="password"
-            placeholder="••••••••"
-            value={password}
-            onChange={e => setPassword(e.target.value)}
-            autoComplete="current-password"
-            autoFocus
-          />
-
-          {error && <p className="login-error">{error}</p>}
-
-          <button
-            type="submit"
-            className="btn btn-primary btn-full btn-lg"
-            style={{ marginTop: 20 }}
-            disabled={loading || !password}
-          >
-            {loading ? 'Vérification…' : 'Accéder'}
-          </button>
-        </form>
+    <div style={{
+      minHeight: '100vh',
+      background: '#F7F5F0',
+      display: 'flex',
+      flexDirection: 'column',
+    }}>
+      {/* Header */}
+      <div style={{
+        background: '#1C3829',
+        padding: '20px 24px',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 10,
+      }}>
+        <span style={{
+          color: '#C4623A',
+          fontSize: 22,
+          fontWeight: 700,
+          fontFamily: 'Inter, sans-serif',
+          letterSpacing: '-0.5px',
+        }}>&gt;&gt;</span>
+        <span style={{
+          color: '#FFFFFF',
+          fontSize: 17,
+          fontWeight: 700,
+          fontFamily: 'Inter, sans-serif',
+          letterSpacing: '-0.3px',
+        }}>Next Move</span>
       </div>
 
-      <style>{`
-        .login-page {
-          height: 100vh;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          background: var(--bg);
-          padding: 24px;
-        }
-        .login-card {
-          width: 100%;
-          max-width: 360px;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-        }
-        .login-logo {
-          font-size: 40px;
-          color: var(--green);
-          margin-bottom: 14px;
-          line-height: 1;
-        }
-        .login-title {
-          font-size: 26px;
-          font-weight: 700;
-          color: var(--text);
-          margin-bottom: 8px;
-          text-align: center;
-        }
-        .login-subtitle {
-          font-size: 14px;
-          color: var(--text-muted);
-          text-align: center;
-          line-height: 1.55;
-          margin-bottom: 28px;
-        }
-        .login-error {
-          color: var(--red);
-          font-size: 13px;
-          background: var(--red-light);
-          padding: 10px 12px;
-          border-radius: var(--radius-sm);
-          margin-top: 10px;
-        }
-      `}</style>
+      {/* Contenu */}
+      <div style={{
+        flex: 1,
+        padding: '40px 24px 32px',
+        display: 'flex',
+        flexDirection: 'column',
+        maxWidth: 420,
+        width: '100%',
+        margin: '0 auto',
+        boxSizing: 'border-box',
+      }}>
+        {/* Titre */}
+        <div style={{ marginBottom: 36 }}>
+          <div style={{
+            fontSize: 34,
+            fontWeight: 300,
+            color: '#1C3829',
+            fontFamily: 'Inter, sans-serif',
+            lineHeight: 1.2,
+          }}>Bon retour,</div>
+          <div style={{
+            fontSize: 34,
+            fontWeight: 700,
+            color: '#1C3829',
+            fontFamily: 'Inter, sans-serif',
+            lineHeight: 1.2,
+          }}>connecte-toi.</div>
+        </div>
+
+        {/* Champ email */}
+        <input
+          type="email"
+          placeholder="Email"
+          value={email}
+          onChange={e => setEmail(e.target.value)}
+          onKeyDown={handleKeyDown}
+          autoComplete="email"
+          style={{
+            width: '100%',
+            padding: '14px 16px',
+            background: '#FFFFFF',
+            border: '0.5px solid #DDD8CE',
+            borderRadius: 10,
+            fontSize: 15,
+            fontFamily: 'Inter, sans-serif',
+            color: '#1C3829',
+            outline: 'none',
+            marginBottom: 12,
+            boxSizing: 'border-box',
+          }}
+        />
+
+        {/* Champ mot de passe */}
+        <div style={{ position: 'relative', marginBottom: 16 }}>
+          <input
+            type={showPassword ? 'text' : 'password'}
+            placeholder="Mot de passe"
+            value={password}
+            onChange={e => setPassword(e.target.value)}
+            onKeyDown={handleKeyDown}
+            autoComplete="current-password"
+            style={{
+              width: '100%',
+              padding: '14px 48px 14px 16px',
+              background: '#FFFFFF',
+              border: '0.5px solid #DDD8CE',
+              borderRadius: 10,
+              fontSize: 15,
+              fontFamily: 'Inter, sans-serif',
+              color: '#1C3829',
+              outline: 'none',
+              boxSizing: 'border-box',
+            }}
+          />
+          <button
+            onClick={() => setShowPassword(v => !v)}
+            style={{
+              position: 'absolute',
+              right: 14,
+              top: '50%',
+              transform: 'translateY(-50%)',
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              fontSize: 18,
+              padding: 0,
+              lineHeight: 1,
+              color: '#A09080',
+            }}
+            aria-label={showPassword ? 'Masquer le mot de passe' : 'Afficher le mot de passe'}
+          >
+            {showPassword ? '🙈' : '👁'}
+          </button>
+        </div>
+
+        {/* Message d'erreur */}
+        {error && (
+          <div style={{
+            color: '#C4623A',
+            fontSize: 13,
+            fontFamily: 'Inter, sans-serif',
+            marginBottom: 16,
+            padding: '10px 14px',
+            background: '#FDF0EB',
+            borderRadius: 8,
+            border: '0.5px solid #C4623A',
+          }}>
+            {error}
+          </div>
+        )}
+
+        {/* Bouton Se connecter */}
+        <button
+          onClick={handleLogin}
+          disabled={loading}
+          style={{
+            width: '100%',
+            padding: '15px 24px',
+            background: loading ? '#A09080' : '#1C3829',
+            color: '#FFFFFF',
+            border: 'none',
+            borderRadius: 10,
+            fontSize: 15,
+            fontWeight: 700,
+            fontFamily: 'Inter, sans-serif',
+            cursor: loading ? 'not-allowed' : 'pointer',
+            marginBottom: 28,
+            transition: 'background 0.15s',
+          }}
+        >
+          {loading ? 'Connexion…' : 'Se connecter'}
+        </button>
+
+        {/* Lien inscription */}
+        <div style={{
+          textAlign: 'center',
+          color: '#A09080',
+          fontSize: 13,
+          fontFamily: 'Inter, sans-serif',
+        }}>
+          Pas encore de compte ?{' '}
+          <button
+            onClick={onNavigateToInscription}
+            style={{
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              color: '#1C3829',
+              fontWeight: 600,
+              fontSize: 13,
+              fontFamily: 'Inter, sans-serif',
+              padding: 0,
+              textDecoration: 'underline',
+            }}
+          >
+            Créer un compte →
+          </button>
+        </div>
+      </div>
     </div>
-  )
+  );
 }

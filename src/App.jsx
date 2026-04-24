@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
-import { useAuth } from './context/AuthContext'
 import { useApp } from './context/AppContext'
 import { shouldShowWeeklyReview, markWeeklyReviewShown } from './services/notifications'
 import Navigation from './components/Navigation'
 import ScrollToTop from './components/ScrollToTop'
 import DossierSheet from './components/DossierSheet'
 import Login from './pages/Login'
+import Inscription from './pages/Inscription'
 import Aujourdhui from './pages/Aujourdhui'
 import Capturer from './pages/Capturer'
 import TousDossiers from './pages/TousDossiers'
@@ -226,14 +226,44 @@ function WeeklyReviewModal({ dossiers, onClose, mettreAJourDossier, supprimerDos
 
 // ── App ───────────────────────────────────────────────────────────────────────
 export default function App() {
-  const { isAuthenticated } = useAuth()
+  const { authUser, authLoading, userProfile, logout } = useApp()
+  const [showInscription, setShowInscription] = useState(false)
 
-  if (!isAuthenticated) {
+  // Pendant la vérification de session
+  if (authLoading) {
     return (
-      <Routes>
-        <Route path="*" element={<Login />} />
-      </Routes>
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        height: '100vh', background: '#F7F5F0',
+      }}>
+        <div style={{
+          width: 48, height: 48, borderRadius: '50%',
+          background: '#C4623A',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          animation: 'pulse 1s ease-in-out infinite',
+        }}>
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+            <polyline points="5 12 12 5 19 12" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+            <polyline points="5 17 12 10 19 17" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        </div>
+        <style>{`@keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.7;transform:scale(.92)} }`}</style>
+      </div>
     )
+  }
+
+  // Compte désactivé
+  if (authUser && userProfile && !userProfile.actif) {
+    logout()
+    return null
+  }
+
+  // Non authentifié
+  if (!authUser) {
+    if (showInscription) {
+      return <Inscription onNavigateToLogin={() => setShowInscription(false)} />
+    }
+    return <Login onNavigateToInscription={() => setShowInscription(true)} />
   }
 
   return <AuthenticatedApp />
