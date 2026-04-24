@@ -519,7 +519,7 @@ export default function Planning({ forceStep }) {
                 { h: 2,   label: '2h'      },
                 { h: 8,   label: 'Journée' },
               ].map(({ h, label }) => (
-                <button key={h} className="pla-heure-btn" onClick={() => handleHeures(h)}>
+                <button key={h} className="pla-heure-btn" onClick={() => handleHeures(h)} onTouchEnd={() => handleHeures(h)}>
                   <span className="pla-heure-val">{label}</span>
                 </button>
               ))}
@@ -548,6 +548,10 @@ export default function Planning({ forceStep }) {
                     className="btn btn-primary pla-custom-ok"
                     disabled={!heuresVal || parseFloat(heuresVal) <= 0}
                     onClick={() => {
+                      handleHeures(parseFloat(heuresVal))
+                      setHeuresCustom(false); setHeuresVal('')
+                    }}
+                    onTouchEnd={() => {
                       handleHeures(parseFloat(heuresVal))
                       setHeuresCustom(false); setHeuresVal('')
                     }}
@@ -606,7 +610,8 @@ export default function Planning({ forceStep }) {
               </button>
             </div>
             <button className="btn btn-primary btn-full" style={{ marginTop:12 }}
-              onClick={() => handleRoutinesConfirm(selectedRIds)}>
+              onClick={() => handleRoutinesConfirm(selectedRIds)}
+              onTouchEnd={() => handleRoutinesConfirm(selectedRIds)}>
               Générer le planning →
             </button>
           </div>
@@ -852,10 +857,10 @@ export default function Planning({ forceStep }) {
             ))}
           </div>
           <div style={{ padding:'12px 16px calc(env(safe-area-inset-bottom,0px)+20px)', background:'var(--surface)', borderTop:'1px solid var(--border)', display:'flex', gap:10, flexShrink:0 }}>
-            <button className="btn btn-ghost" style={{ flex:1 }} onClick={handleRecalculer} disabled={generating}>
+            <button className="btn btn-ghost" style={{ flex:1 }} onClick={handleRecalculer} onTouchEnd={handleRecalculer} disabled={generating}>
               {generating ? '…' : '↺ Recalculer'}
             </button>
-            <button className="btn btn-primary" style={{ flex:2 }} onClick={handleConfirmer} disabled={generating}>
+            <button className="btn btn-primary" style={{ flex:2 }} onClick={handleConfirmer} onTouchEnd={handleConfirmer} disabled={generating}>
               Confirmer ce planning
             </button>
           </div>
