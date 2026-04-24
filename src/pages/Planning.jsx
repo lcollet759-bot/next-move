@@ -183,7 +183,7 @@ function BlocTache({ tp, editingId, dureeDraft, onEditStart, onDraftChange, onEd
 
 // ── Page principale ───────────────────────────────────────────────────────────
 export default function Planning({ forceStep }) {
-  const { dossiersAujourdhui, apiKey, toggleTache } = useApp()
+  const { dossiersAujourdhui, apiKey, toggleTache, authUser } = useApp()
   const navigate = useNavigate()
   const location = useLocation()
 
@@ -226,7 +226,7 @@ export default function Planning({ forceStep }) {
 
     const h = location.state?.heures
     if (forceStep === 'heures' || h) {
-      getRoutines().then(fresh => {
+      getRoutines(authUser?.id).then(fresh => {
         const hrs = h || 4
         setRoutines(fresh); localStorage.setItem(ROUTINES_KEY, JSON.stringify(fresh))
         setHeuresPick(hrs)
@@ -240,7 +240,7 @@ export default function Planning({ forceStep }) {
     async function load() {
       let freshRoutines = []
       try {
-        freshRoutines = await getRoutines()
+        freshRoutines = await getRoutines(authUser?.id)
         setRoutines(freshRoutines); localStorage.setItem(ROUTINES_KEY, JSON.stringify(freshRoutines))
       } catch {}
 
@@ -257,7 +257,7 @@ export default function Planning({ forceStep }) {
       }
       sessionStorage.removeItem('nm-planning-visite')
       try {
-        const p = await getPlanningForDate(today)
+        const p = await getPlanningForDate(today, authUser?.id)
         if (p) {
           setPlanning(p); localStorage.setItem(PLANNING_KEY(today), JSON.stringify(p))
         } else {
@@ -301,7 +301,7 @@ export default function Planning({ forceStep }) {
     const np      = { ...planning, tachesPlanifiees: [...resched, ...done] }
     setPlanning(np)
     localStorage.setItem(PLANNING_KEY(todayISO()), JSON.stringify(np))
-    savePlanning(np).catch(() => {})
+    savePlanning(np, authUser?.id).catch(() => {})
   }, [dossiersAujourdhui, planning]) // eslint-disable-line
 
   // ── Handlers étapes ──────────────────────────────────────────────────────
@@ -359,7 +359,7 @@ export default function Planning({ forceStep }) {
     const today = todayISO()
     const np = { id: planning?.id || uuid(), date: today, heuresDisponibles: heuresTotales,
       tachesPlanifiees, createdAt: planning?.createdAt || new Date().toISOString() }
-    await savePlanning(np)
+    await savePlanning(np, authUser?.id)
     localStorage.setItem(PLANNING_KEY(today), JSON.stringify(np))
     sessionStorage.setItem('nm-planning-visite', today)
     setPlanning(np); setHeuresPick(heuresTotales)
@@ -373,7 +373,7 @@ export default function Planning({ forceStep }) {
     const np      = { ...planning, tachesPlanifiees: recalculerHoraires(updated) }
     setPlanning(np)
     localStorage.setItem(PLANNING_KEY(todayISO()), JSON.stringify(np))
-    savePlanning(np).catch(() => {})
+    savePlanning(np, authUser?.id).catch(() => {})
   }
 
   const handlePropEditSave = (tacheId, draft) => {
@@ -389,7 +389,7 @@ export default function Planning({ forceStep }) {
       const updated = planning.tachesPlanifiees.map(t => t.tacheId === tacheId ? { ...t, done: !t.done } : t)
       const active  = updated.filter(t => !t.done); const done = updated.filter(t => t.done)
       const np      = { ...planning, tachesPlanifiees: [...genererCreneaux(active, planning.heuresDisponibles), ...done] }
-      setPlanning(np); localStorage.setItem(PLANNING_KEY(today), JSON.stringify(np)); savePlanning(np).catch(() => {})
+      setPlanning(np); localStorage.setItem(PLANNING_KEY(today), JSON.stringify(np)); savePlanning(np, authUser?.id).catch(() => {})
     } else { await toggleTache(dossierId, tacheId) }
   }
 
@@ -399,7 +399,7 @@ export default function Planning({ forceStep }) {
     if (actives.length < 2) return
     const [first, ...rest] = actives; const done = planning.tachesPlanifiees.filter(t => t.done)
     const np = { ...planning, tachesPlanifiees: [...recalculerHoraires([...rest, first]), ...done] }
-    setPlanning(np); localStorage.setItem(PLANNING_KEY(todayISO()), JSON.stringify(np)); savePlanning(np).catch(() => {})
+    setPlanning(np); localStorage.setItem(PLANNING_KEY(todayISO()), JSON.stringify(np)); savePlanning(np, authUser?.id).catch(() => {})
   }
 
   const handleAddRoutine = async (routine) => {
