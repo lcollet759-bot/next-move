@@ -182,6 +182,7 @@ export default function Aujourdhui() {
             <button
               className="aj-dicter-btn"
               onClick={lancerBrainDump}
+              onTouchEnd={lancerBrainDump}
               disabled={bdLoading || !bdTexte.trim()}
             >
               {bdLoading
@@ -299,6 +300,7 @@ export default function Aujourdhui() {
               </button>
               <button className="btn btn-primary" style={{ flex: 2 }}
                 onClick={lancerBrainDump}
+                onTouchEnd={lancerBrainDump}
                 disabled={bdLoading || !bdTexte.trim()}>
                 {bdLoading
                   ? <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>

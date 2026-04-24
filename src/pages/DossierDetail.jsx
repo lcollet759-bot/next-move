@@ -232,11 +232,11 @@ export default function DossierDetail() {
                 <>
                   <div className="dd-menu-backdrop" onClick={() => setShowMenu(false)} />
                   <div className="dd-menu-card">
-                    <button className="dd-menu-item" onClick={() => { setShowMenu(false); setShowConfirmClose(true) }}>
+                    <button className="dd-menu-item" onClick={() => { setShowMenu(false); setShowConfirmClose(true) }} onTouchEnd={() => { setShowMenu(false); setShowConfirmClose(true) }}>
                       Clôturer ce dossier
                     </button>
                     <div className="dd-menu-divider" />
-                    <button className="dd-menu-item dd-menu-item-danger" onClick={() => { setShowMenu(false); setShowConfirmDel(true) }}>
+                    <button className="dd-menu-item dd-menu-item-danger" onClick={() => { setShowMenu(false); setShowConfirmDel(true) }} onTouchEnd={() => { setShowMenu(false); setShowConfirmDel(true) }}>
                       Supprimer définitivement
                     </button>
                   </div>
@@ -282,7 +282,7 @@ export default function DossierDetail() {
           {blocageCause && (
             <div className="dd-blocage">
               <p className="dd-blocage-phrase">{blocageCause.phrase}</p>
-              <button className="dd-blocage-btn" onClick={handleBlocageAction}>{blocageCause.action}</button>
+              <button className="dd-blocage-btn" onClick={handleBlocageAction} onTouchEnd={handleBlocageAction}>{blocageCause.action}</button>
             </div>
           )}
 
@@ -290,7 +290,7 @@ export default function DossierDetail() {
           {!isClos && total > 0 && tachesDone === total && (
             <div className="dd-cloture-hint">
               <span>Toutes les tâches sont faites !</span>
-              <button className="dd-cloture-hint-btn" onClick={() => setShowConfirmClose(true)}>Clôturer →</button>
+              <button className="dd-cloture-hint-btn" onClick={() => setShowConfirmClose(true)} onTouchEnd={() => setShowConfirmClose(true)}>Clôturer →</button>
             </div>
           )}
 
@@ -359,7 +359,7 @@ export default function DossierDetail() {
 
           {/* Bouton Ajouter en pointillés */}
           {!isClos && !showAddTache && (
-            <button className="dd-add-btn" onClick={() => setShowAddTache(true)}>
+            <button className="dd-add-btn" onClick={() => setShowAddTache(true)} onTouchEnd={() => setShowAddTache(true)}>
               + Ajouter une tâche
             </button>
           )}
@@ -463,7 +463,7 @@ export default function DossierDetail() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span className={`dd-etat-pill dd-etat-${dossier.etat}`}>{ETATS_LABELS[dossier.etat] || dossier.etat}</span>
                   {!isClos && (
-                    <button className="dd-info-edit-btn" onClick={() => setShowEtatSheet(true)}>Changer</button>
+                    <button className="dd-info-edit-btn" onClick={() => setShowEtatSheet(true)} onTouchEnd={() => setShowEtatSheet(true)}>Changer</button>
                   )}
                 </div>
               </div>
@@ -579,7 +579,7 @@ export default function DossierDetail() {
             </p>
             <div style={{ display: 'flex', gap: 10 }}>
               <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => setShowConfirmClose(false)}>Annuler</button>
-              <button className="btn btn-primary" style={{ flex: 2 }} onClick={handleClose}>Confirmer</button>
+              <button className="btn btn-primary" style={{ flex: 2 }} onClick={handleClose} onTouchEnd={handleClose}>Confirmer</button>
             </div>
           </div>
         </div>
@@ -595,7 +595,7 @@ export default function DossierDetail() {
             </p>
             <div style={{ display: 'flex', gap: 10 }}>
               <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => setShowConfirmDel(false)}>Annuler</button>
-              <button className="btn" style={{ flex: 2, background: '#C4623A', color: '#fff', borderRadius: 'var(--radius)', padding: '12px', fontWeight: 600, border: 'none', cursor: 'pointer' }} onClick={handleDelete}>
+              <button className="btn" style={{ flex: 2, background: '#C4623A', color: '#fff', borderRadius: 'var(--radius)', padding: '12px', fontWeight: 600, border: 'none', cursor: 'pointer' }} onClick={handleDelete} onTouchEnd={handleDelete}>
                 Supprimer
               </button>
             </div>

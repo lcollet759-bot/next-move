@@ -317,7 +317,7 @@ export default function Capturer() {
           {error && <p className="cap-error">{error}</p>}
           <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
             <button className="btn btn-ghost" style={{ flex: 1 }} onClick={reset}>← Recommencer</button>
-            <button className="btn btn-primary" style={{ flex: 2 }} onClick={toutCreer} disabled={saving}>
+            <button className="btn btn-primary" style={{ flex: 2 }} onClick={toutCreer} onTouchEnd={toutCreer} disabled={saving}>
               {saving ? 'Création…' : `Créer ${brainDumpResult.length} dossier${brainDumpResult.length > 1 ? 's' : ''}`}
             </button>
           </div>
@@ -379,7 +379,7 @@ export default function Capturer() {
           {error && <p className="cap-error">{error}</p>}
           <div style={{ display: 'flex', gap: 10 }}>
             <button className="btn btn-ghost" style={{ flex: 1 }} onClick={reset}>← Modifier</button>
-            <button className="btn btn-primary" style={{ flex: 2 }} onClick={confirmer} disabled={saving}>
+            <button className="btn btn-primary" style={{ flex: 2 }} onClick={confirmer} onTouchEnd={confirmer} disabled={saving}>
               {saving ? 'Création…' : 'Créer le dossier'}
             </button>
           </div>
@@ -550,6 +550,7 @@ export default function Capturer() {
           className="btn btn-primary btn-full btn-lg"
           style={{ marginTop: 16 }}
           onClick={analyser}
+          onTouchEnd={analyser}
           disabled={!canAnalyse}
         >
           {loading
