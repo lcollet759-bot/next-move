@@ -235,6 +235,7 @@ export function AppProvider({ children }) {
     await signOut()
     setAuthUser(null)
     setUserProfile(null)
+    dispatch({ type: 'RESET' })
   }
 
   // ── Chargement des données (déclenché quand authUser est connu) ────────────
