@@ -362,7 +362,7 @@ export default function Reglages() {
               <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => setShowConfirmLogout(false)}>
                 Annuler
               </button>
-              <button className="btn btn-primary" style={{ flex: 1 }} onClick={handleLogout}>
+              <button className="btn btn-primary" style={{ flex: 1 }} onClick={handleLogout} onTouchEnd={handleLogout}>
                 Déconnecter
               </button>
             </div>
