@@ -25,6 +25,7 @@ export default function Aujourdhui() {
   const [bdLoading, setBdLoading] = useState(false)
   const [bdError,   setBdError]   = useState('')
   const [showBD,    setShowBD]    = useState(false)
+  const [indexTache, setIndexTache] = useState(0)
 
   // ── Résumé IA matinal ──────────────────────────────────────────────────────
   const [resumeIA,      setResumeIA]      = useState(() => {
@@ -52,11 +53,12 @@ export default function Aujourdhui() {
   }, [apiKey, dossiers])
 
   // Générer automatiquement au chargement si pas encore de résumé pour aujourd'hui
+  // Dépend aussi de `dossiers` pour se déclencher quand l'utilisateur revient sur l'écran
   useEffect(() => {
     if (!loading && apiKey && !resumeIA) {
       genererResume()
     }
-  }, [loading]) // eslint-disable-line
+  }, [loading, dossiers]) // eslint-disable-line
 
   const lancerBrainDump = async () => {
     if (!bdTexte.trim()) return
@@ -91,8 +93,14 @@ export default function Aujourdhui() {
   const toutesLesTaches = dossiersAujourdhui.flatMap(d =>
     d.taches.filter(t => !t.done).map(t => ({ tache: t, dossier: d }))
   )
-  const tacheNow       = toutesLesTaches[0] || null
-  const tachesNext     = toutesLesTaches.slice(1, 4)
+  const indexEffectif  = Math.min(indexTache, Math.max(0, toutesLesTaches.length - 1))
+  const tacheNow       = toutesLesTaches[indexEffectif] || null
+  const tachesNext     = toutesLesTaches.slice(indexEffectif + 1, indexEffectif + 4)
+
+  const handleApres = () => {
+    if (toutesLesTaches.length <= 1) return
+    setIndexTache(i => Math.min(i + 1, toutesLesTaches.length - 1))
+  }
   const allDossiers    = dossiers || dossiersAujourdhui
   const dossiersAttente = allDossiers.filter(d => d.etat === 'attente_externe')
 
@@ -205,10 +213,19 @@ export default function Aujourdhui() {
                   <p className="aj-task-title">{tacheNow.tache.titre}</p>
                   <p className="aj-task-sub">{tacheNow.dossier.titre}</p>
                   <div className="aj-task-btns">
-                    <button className="aj-btn-start" onClick={() => navigate('/focus')}>
+                    <button
+                      className="aj-btn-start"
+                      onClick={() => navigate('/focus', { state: { taches: toutesLesTaches, planningDate: todayISO() } })}
+                      onTouchEnd={(e) => { e.preventDefault(); navigate('/focus', { state: { taches: toutesLesTaches, planningDate: todayISO() } }) }}
+                    >
                       Commencer
                     </button>
-                    <button className="aj-btn-later">Après</button>
+                    <button
+                      className="aj-btn-later"
+                      onClick={handleApres}
+                      onTouchEnd={(e) => { e.preventDefault(); handleApres() }}
+                      disabled={toutesLesTaches.length <= 1}
+                    >Après</button>
                   </div>
                 </div>
               </div>

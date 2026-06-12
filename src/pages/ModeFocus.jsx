@@ -55,7 +55,7 @@ function EcranFin({ fait, doneIds, planningData, navigate, fromPlanning }) {
 
 // ── Page principale ───────────────────────────────────────────────────────────
 export default function ModeFocus() {
-  const { dossiersAujourdhui, toggleTache } = useApp()
+  const { dossiersAujourdhui, toggleTache, authUser } = useApp()
   const navigate = useNavigate()
   const location = useLocation()
 
@@ -133,7 +133,7 @@ export default function ModeFocus() {
       }
       localStorage.setItem(PLANNING_KEY(planningDate), JSON.stringify(updatedPlanning))
       setPlanningData(updatedPlanning)
-      savePlanning(updatedPlanning).catch(() => {})
+      savePlanning(updatedPlanning, authUser?.id).catch(() => {})
     }
 
     // 3. Carte sort vers le haut (transition 300ms)
@@ -177,7 +177,7 @@ export default function ModeFocus() {
     const np      = { ...planningData, tachesPlanifiees: updated }
     localStorage.setItem(PLANNING_KEY(planningDate), JSON.stringify(np))
     setPlanningData(np)
-    try { await savePlanning(np) } catch {}
+    try { await savePlanning(np, authUser?.id) } catch {}
     try {
       if (Notification.permission === 'granted')
         new Notification('Planning ajusté', { body: 'Ton planning a été recalculé.', icon: '/favicon.svg' })
@@ -203,6 +203,7 @@ export default function ModeFocus() {
           <button
             className="focus-quit"
             onClick={() => navigate(planningDate ? '/planning' : '/')}
+            onTouchEnd={(e) => { e.preventDefault(); navigate(planningDate ? '/planning' : '/') }}
           >
             ← Quitter
           </button>
@@ -267,6 +268,7 @@ export default function ModeFocus() {
         <button
           className="focus-btn-passer"
           onClick={handlePasser}
+          onTouchEnd={(e) => { e.preventDefault(); handlePasser() }}
           disabled={animating}
         >
           Passer
@@ -274,6 +276,7 @@ export default function ModeFocus() {
         <button
           className="focus-btn-fait"
           onClick={handleFait}
+          onTouchEnd={(e) => { e.preventDefault(); handleFait() }}
           disabled={animating}
         >
           Fait ✓

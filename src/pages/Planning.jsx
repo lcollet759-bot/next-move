@@ -670,10 +670,13 @@ export default function Planning({ forceStep }) {
                 </div>
                 <div className="pla-now-btns">
                   <button className="pla-btn-go"
-                    onClick={() => navigate('/focus', { state: { planningDate: today, taches: tachesActiv } })}>
+                    onClick={() => navigate('/focus', { state: { planningDate: today, taches: tachesActiv } })}
+                    onTouchEnd={(e) => { e.preventDefault(); navigate('/focus', { state: { planningDate: today, taches: tachesActiv } }) }}>
                     Commencer
                   </button>
-                  <button className="pla-btn-skip" onClick={handleApres} disabled={tachesActiv.length < 2}>
+                  <button className="pla-btn-skip" onClick={handleApres}
+                    onTouchEnd={(e) => { e.preventDefault(); handleApres() }}
+                    disabled={tachesActiv.length < 2}>
                     Après
                   </button>
                 </div>

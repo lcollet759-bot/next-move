@@ -101,7 +101,7 @@ export default function DossierDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
   const { dossiers, mettreAJourDossier, toggleTache, ajouterTache, supprimerTache,
-          supprimerDossier, ajouterEtapeManuelle, supprimerEtape } = useApp()
+          supprimerDossier, ajouterEtapeManuelle, supprimerEtape, authUser } = useApp()
 
   const dossier = dossiers.find(d => d.id === id)
 
@@ -128,7 +128,7 @@ export default function DossierDetail() {
   const [newEtapeTexte,  setNewEtapeTexte]  = useState('')
   const [newEtapeStatut, setNewEtapeStatut] = useState('fait')
 
-  const reloadEtapes = () => getEtapesForDossier(id).then(setEtapes)
+  const reloadEtapes = () => getEtapesForDossier(id, authUser?.id).then(setEtapes)
 
   useEffect(() => {
     if (dossier) {

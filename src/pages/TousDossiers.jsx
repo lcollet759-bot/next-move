@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 
@@ -77,6 +77,12 @@ export default function TousDossiers() {
   })
   const [recherche, setRecherche] = useState('')
   const [limit,     setLimit]     = useState(PAGE_SIZE)
+
+  // Réagir aux changements de searchParams (navigation client-side sans remontage)
+  useEffect(() => {
+    const f = searchParams.get('filtre')
+    if (FILTRES.some(x => x.key === f)) setFiltre(f)
+  }, [searchParams])
 
   const dossiersFiltres = useMemo(() => {
     let list = [...dossiers]
