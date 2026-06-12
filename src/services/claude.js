@@ -422,6 +422,37 @@ export async function planifierOptimal(params) {
   return planifierAvecDurees(params)
 }
 
+// ── Recommandation IA — Revue hebdomadaire ────────────────────────────────
+// Analyse un dossier Q4 ("Plus tard") et génère une recommandation courte
+// et personnalisée pour aider l'utilisateur à décider quoi en faire.
+export async function genererRecommandationHebdo({ dossier, joursSansAction, historique = [] }) {
+  if (!getApiKey()) throw new Error('Clé API manquante.')
+
+  const system = `Tu es la secrétaire IA d'un entrepreneur suisse indépendant qui gère 3-5 projets simultanément.
+Tu analyses les dossiers mis de côté ("Plus tard") lors de la revue hebdomadaire du lundi.
+Tu dois produire UNE recommandation courte, directe et personnalisée (2-3 phrases maximum) pour aider l'utilisateur à décider quoi faire de ce dossier.
+Ton ton est celui d'une assistante efficace et bienveillante, pas d'un robot.
+Tu mentionnes le nombre de jours sans action, l'échéance si elle existe, et tu termines par une recommandation claire.
+Réponds UNIQUEMENT avec le texte de la recommandation, sans introduction, sans guillemets, sans markdown.`
+
+  const histTxt = historique.length > 0
+    ? historique.slice(0, 3).map(e => `• ${e.date} — ${e.texte}`).join('\n')
+    : 'Aucun historique'
+
+  const taches = Array.isArray(dossier.taches) ? dossier.taches.filter(t => !t.done).length : 0
+
+  const userMsg = `Dossier : "${dossier.titre}"
+Organisme : ${dossier.organisme || 'Non renseigné'}
+Description : ${dossier.description || 'Non renseignée'}
+Dernière action : il y a ${joursSansAction} jours
+Échéance : ${dossier.echeance || 'Aucune'}
+Historique récent :
+${histTxt}
+Nombre de tâches restantes : ${taches}`
+
+  return callClaude(system, userMsg, { maxTokens: 150, temperature: 0.3 })
+}
+
 // ── Explication "pourquoi aujourd'hui" ────────────────────────────────────
 export async function genererRaison(dossier) {
   if (!getApiKey()) return ''
