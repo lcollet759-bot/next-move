@@ -7,6 +7,8 @@ import { setReminder, removeReminder, checkReminders, requestPermission, notifyE
 const AppContext = createContext(null)
 
 const RECALC_KEY = 'nm-last-recalc'
+const PING_KEY   = 'last_supabase_ping'
+const PING_INTERVAL_MS = 48 * 60 * 60 * 1000   // 48h
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -282,6 +284,16 @@ export function AppProvider({ children }) {
     async function load() {
       // Migrer les données IndexedDB existantes (une seule fois)
       await migrateFromIndexedDB()
+
+      // Keep-alive Supabase : pinger une fois toutes les 48h pour éviter la pause projet
+      try {
+        const last = parseInt(localStorage.getItem(PING_KEY) || '0', 10)
+        if (Date.now() - last > PING_INTERVAL_MS) {
+          db.pingSupabase().then(() => {
+            localStorage.setItem(PING_KEY, String(Date.now()))
+          }).catch(() => {})
+        }
+      } catch {}
 
       let [dossiers, journal] = await Promise.all([
         db.getDossiers(authUser?.id),

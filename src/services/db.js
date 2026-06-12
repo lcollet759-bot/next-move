@@ -141,6 +141,17 @@ function raise(error, ctx) {
   throw new Error(error.message)
 }
 
+// ── Keep-alive ────────────────────────────────────────────────────────────
+// Requête HEAD ultra-légère (pas de payload, juste un count) pour empêcher
+// Supabase de mettre le projet free tier en pause après 7 jours d'inactivité.
+export async function pingSupabase() {
+  const { error } = await supabase
+    .from('dossiers')
+    .select('id', { count: 'exact', head: true })
+    .limit(1)
+  if (error) console.warn('[DB] pingSupabase:', error.message)
+}
+
 // ── Dossiers ──────────────────────────────────────────────────────────────
 
 export async function getDossiers(userId) {
