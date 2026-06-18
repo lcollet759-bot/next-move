@@ -220,19 +220,26 @@ export function AppProvider({ children }) {
 
   // ── Auth ──────────────────────────────────────────────────────────────────
   useEffect(() => {
-    getCurrentUser().then(async (user) => {
-      if (user) {
-        const profile = await getUserProfile(user.id)
-        if (!profile?.actif) {
-          await signOut()
-          setAuthErrorMessage('Ton compte a été désactivé. Contacte l\'administrateur.')
-        } else {
-          setAuthUser(user)
-          setUserProfile(profile)
+    async function initAuth() {
+      try {
+        const user = await withTimeout(getCurrentUser(), 3000)
+        if (user) {
+          const profile = await withTimeout(getUserProfile(user.id), 3000)
+          if (!profile?.actif) {
+            await signOut()
+            setAuthErrorMessage('Ton compte a été désactivé. Contacte l\'administrateur.')
+          } else {
+            setAuthUser(user)
+            setUserProfile(profile)
+          }
         }
+      } catch (err) {
+        console.warn('[auth] init timeout/erreur, démarrage non authentifié', err.message)
+      } finally {
+        setAuthLoading(false)
       }
-      setAuthLoading(false)
-    })
+    }
+    initAuth()
 
     const { data: { subscription } } = onAuthStateChange(async (event, session) => {
       if (session?.user) {
