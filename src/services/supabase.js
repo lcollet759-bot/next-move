@@ -5,4 +5,10 @@ import { createClient } from '@supabase/supabase-js'
 const SUPABASE_URL      = 'https://txjschrjzwhvziroexvb.supabase.co'
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR4anNjaHJqendodnppcm9leHZiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU5NTIxOTcsImV4cCI6MjA5MTUyODE5N30.aj6vHUry2ROyV-09WfB-y_rp70h-Ox1lwfmTsbZJRxQ'
 
-export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  auth: {
+    // Neutralise le verrou navigator.locks : dans une PWA il peut rester bloqué
+    // (instance fermée, transition Service Worker) et figer signIn/getSession.
+    lock: (_name, _acquireTimeout, fn) => fn(),
+  },
+})
