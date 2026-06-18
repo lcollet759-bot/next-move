@@ -12,6 +12,16 @@ const PING_INTERVAL_MS = 48 * 60 * 60 * 1000   // 48h
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
+// Helper : wrapper une promesse avec timeout 3 sec
+function withTimeout(promise, ms = 3000) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error(`Timeout après ${ms}ms`)), ms)
+    )
+  ])
+}
+
 function todayISO() {
   return new Date().toISOString().split('T')[0]
 }
@@ -283,7 +293,11 @@ export function AppProvider({ children }) {
 
     async function load() {
       // Migrer les données IndexedDB existantes (une seule fois)
-      await migrateFromIndexedDB()
+      try {
+        await withTimeout(migrateFromIndexedDB(), 3000)
+      } catch (err) {
+        console.warn('[load] IndexedDB timeout/error, continuing...', err.message)
+      }
 
       // Keep-alive Supabase : pinger une fois toutes les 48h pour éviter la pause projet
       try {
@@ -295,10 +309,19 @@ export function AppProvider({ children }) {
         }
       } catch {}
 
-      let [dossiers, journal] = await Promise.all([
-        db.getDossiers(authUser?.id),
-        db.getJournal(authUser?.id),
-      ])
+      let [dossiers, journal] = [[], []]
+      try {
+        [dossiers, journal] = await withTimeout(
+          Promise.all([
+            db.getDossiers(authUser?.id),
+            db.getJournal(authUser?.id),
+          ]),
+          3000
+        )
+      } catch (err) {
+        console.warn('[load] Supabase timeout, app starting offline', err.message)
+        // Dossiers et journal restent vides — l'app démarre quand même
+      }
 
       // ── Recalcul quotidien : Eisenhower + statuts automatiques ────────────
       const lastRecalc = localStorage.getItem(RECALC_KEY)
@@ -313,7 +336,9 @@ export function AppProvider({ children }) {
           const newJournalEntries = []
           const now = new Date().toISOString()
 
-          await Promise.all([...allIds].map(uid => {
+          try {
+            await withTimeout(
+              Promise.all([...allIds].map(uid => {
             const dossier = dossiers.find(d => d.id === uid)
             if (!dossier) return Promise.resolve()
 
@@ -386,7 +411,13 @@ export function AppProvider({ children }) {
             }
 
             return Promise.all(ops)
-          }))
+              })),
+              3000
+            )
+          } catch (err) {
+            console.warn('[load] Multi-write timeout, some dossiers may not sync', err.message)
+            // Continue même si écriture incomplète
+          }
 
           if (newJournalEntries.length > 0) {
             journal = [...newJournalEntries, ...journal]
