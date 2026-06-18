@@ -25,7 +25,7 @@ function fmtLibere(doneIds, planningData) {
 }
 
 // ── Écran de fin ──────────────────────────────────────────────────────────────
-function EcranFin({ fait, doneIds, planningData, navigate, fromPlanning }) {
+function EcranFin({ fait, doneIds, planningData, navigate, retourPath }) {
   const libere = fmtLibere(doneIds, planningData)
   return (
     <div className="focus-page">
@@ -43,7 +43,7 @@ function EcranFin({ fait, doneIds, planningData, navigate, fromPlanning }) {
         )}
         <button
           className="focus-fin-btn"
-          onClick={() => navigate(fromPlanning ? '/planning' : '/')}
+          onClick={() => navigate(retourPath)}
         >
           Retour
         </button>
@@ -61,6 +61,11 @@ export default function ModeFocus() {
 
   const planningDate    = location.state?.planningDate    || null
   const brainDumpTaches = location.state?.brainDumpTaches || null
+  const from            = location.state?.from            || null
+
+  // Où revenir en quittant le Mode Focus : priorité à l'origine explicite
+  // ('today' = lancé depuis Aujourd'hui), sinon repli sur l'ancienne logique.
+  const retourPath = from === 'today' ? '/' : (planningDate ? '/planning' : '/')
 
   const [planningData, setPlanningData] = useState(() => {
     if (!planningDate) return null
@@ -105,7 +110,7 @@ export default function ModeFocus() {
         doneIds={doneIds}
         planningData={planningData}
         navigate={navigate}
-        fromPlanning={!!planningDate}
+        retourPath={retourPath}
       />
     )
   }
@@ -202,8 +207,8 @@ export default function ModeFocus() {
         <div className="focus-header-row">
           <button
             className="focus-quit"
-            onClick={() => navigate(planningDate ? '/planning' : '/')}
-            onTouchEnd={(e) => { e.preventDefault(); navigate(planningDate ? '/planning' : '/') }}
+            onClick={() => navigate(retourPath)}
+            onTouchEnd={(e) => { e.preventDefault(); navigate(retourPath) }}
           >
             ← Quitter
           </button>

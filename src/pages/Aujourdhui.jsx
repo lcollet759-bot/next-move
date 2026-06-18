@@ -215,8 +215,8 @@ export default function Aujourdhui() {
                   <div className="aj-task-btns">
                     <button
                       className="aj-btn-start"
-                      onClick={() => navigate('/focus', { state: { taches: toutesLesTaches, planningDate: todayISO() } })}
-                      onTouchEnd={(e) => { e.preventDefault(); navigate('/focus', { state: { taches: toutesLesTaches, planningDate: todayISO() } }) }}
+                      onClick={() => navigate('/focus', { state: { taches: toutesLesTaches, planningDate: todayISO(), from: 'today' } })}
+                      onTouchEnd={(e) => { e.preventDefault(); navigate('/focus', { state: { taches: toutesLesTaches, planningDate: todayISO(), from: 'today' } }) }}
                     >
                       Commencer
                     </button>
