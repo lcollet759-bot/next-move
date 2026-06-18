@@ -17,6 +17,16 @@ import {
   minutesToHHMM,
 } from '../services/planning'
 
+// Helper : wrapper une promesse avec timeout (copié de AppContext, identique)
+function withTimeout(promise, ms = 3000) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error(`Timeout après ${ms}ms`)), ms)
+    )
+  ])
+}
+
 // ── Constantes ────────────────────────────────────────────────────────────────
 const PLANNING_KEY = (d) => `nm-planning-${d}`
 const ROUTINES_KEY = 'nm-routines-cache'
@@ -240,7 +250,7 @@ export default function Planning({ forceStep }) {
     async function load() {
       let freshRoutines = []
       try {
-        freshRoutines = await getRoutines(authUser?.id)
+        freshRoutines = await withTimeout(getRoutines(authUser?.id), 3000)
         setRoutines(freshRoutines); localStorage.setItem(ROUTINES_KEY, JSON.stringify(freshRoutines))
       } catch {}
 
@@ -257,7 +267,7 @@ export default function Planning({ forceStep }) {
       }
       sessionStorage.removeItem('nm-planning-visite')
       try {
-        const p = await getPlanningForDate(today, authUser?.id)
+        const p = await withTimeout(getPlanningForDate(today, authUser?.id), 3000)
         if (p) {
           setPlanning(p); localStorage.setItem(PLANNING_KEY(today), JSON.stringify(p))
         } else {
@@ -270,9 +280,19 @@ export default function Planning({ forceStep }) {
           } else { setStep('heures') }
         }
       } catch {
-        const hrs = location.state?.heures
-        if (hrs) { setHeuresPick(hrs); lancerGeneration(hrs, []) }
-        else setStep('heures')
+        // Repli : si la DB timeout/échoue mais qu'un planning est en cache, l'afficher
+        if (cached) {
+          try { setPlanning(JSON.parse(cached)) }
+          catch {
+            const hrs = location.state?.heures
+            if (hrs) { setHeuresPick(hrs); lancerGeneration(hrs, []) }
+            else setStep('heures')
+          }
+        } else {
+          const hrs = location.state?.heures
+          if (hrs) { setHeuresPick(hrs); lancerGeneration(hrs, []) }
+          else setStep('heures')
+        }
       } finally { setLoading(false) }
     }
     load()
