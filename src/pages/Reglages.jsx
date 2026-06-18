@@ -91,6 +91,7 @@ function SettingsRow({ icon, label, sublabel, right, onClick, danger, first, las
     <button
       className={`rgl-row${onClick ? ' rgl-row-tap' : ''}${danger ? ' rgl-row-danger' : ''}${first ? ' rgl-row-first' : ''}${last ? ' rgl-row-last' : ''}`}
       onClick={onClick}
+      onTouchEnd={onClick ? (e) => { e.preventDefault(); onClick() } : undefined}
       disabled={!onClick}
       style={!onClick ? { cursor: 'default' } : undefined}
     >
