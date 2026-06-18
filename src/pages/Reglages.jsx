@@ -254,7 +254,7 @@ export default function Reglages() {
                 </button>
               </div>
               {apiKey && (
-                <p className="rgl-key-hint">Modèle : claude-sonnet-4-20250514</p>
+                <p className="rgl-key-hint">Modèle : claude-sonnet-4-6</p>
               )}
               <span className="rgl-row-sep rgl-sep-bottom" />
             </div>
