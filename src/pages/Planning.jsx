@@ -248,7 +248,7 @@ export default function Planning({ forceStep }) {
       const cached    = localStorage.getItem(PLANNING_KEY(today))
       const dejaPasse = sessionStorage.getItem('nm-planning-visite') === today
 
-      if (cached) {
+      if (cached && (location.key === 'default' || dejaPasse)) {
         try {
           setPlanning(JSON.parse(cached))
           sessionStorage.setItem('nm-planning-visite', today)
