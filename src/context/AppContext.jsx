@@ -591,16 +591,30 @@ export function AppProvider({ children }) {
     if (!dossier) return
     const tache   = { id: uuid(), titre: titreTrim, done: false }
     const updated = { ...dossier, taches: [...dossier.taches, tache], updatedAt: new Date().toISOString() }
-    await db.saveDossier(updated, authUser?.id)
+    // UI optimiste : on met à jour l'écran TOUT DE SUITE
     dispatch({ type: 'UPDATE_DOSSIER', dossier: updated })
+    try {
+      await withTimeout(db.saveDossier(updated, authUser?.id), 4000)
+    } catch (err) {
+      // échec : on annule visuellement (la tâche ajoutée disparaît)
+      dispatch({ type: 'UPDATE_DOSSIER', dossier })
+      console.warn('[ajouterTache] sauvegarde échouée, rollback', err.message)
+    }
   }, [state.dossiers, authUser])
 
   const supprimerTache = useCallback(async (dossierId, tacheId) => {
     const dossier = state.dossiers.find(d => d.id === dossierId)
     if (!dossier) return
     const updated = { ...dossier, taches: dossier.taches.filter(t => t.id !== tacheId), updatedAt: new Date().toISOString() }
-    await db.saveDossier(updated, authUser?.id)
+    // UI optimiste : on met à jour l'écran TOUT DE SUITE
     dispatch({ type: 'UPDATE_DOSSIER', dossier: updated })
+    try {
+      await withTimeout(db.saveDossier(updated, authUser?.id), 4000)
+    } catch (err) {
+      // échec : on annule visuellement (la tâche supprimée réapparaît)
+      dispatch({ type: 'UPDATE_DOSSIER', dossier })
+      console.warn('[supprimerTache] sauvegarde échouée, rollback', err.message)
+    }
   }, [state.dossiers, authUser])
 
   // ── Étapes manuelles ─────────────────────────────────────────────────────
