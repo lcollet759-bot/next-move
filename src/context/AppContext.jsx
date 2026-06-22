@@ -570,10 +570,18 @@ export function AppProvider({ children }) {
     if (!dossier) return
     const taches  = dossier.taches.map(t => t.id === tacheId ? { ...t, done: !t.done } : t)
     const updated = { ...dossier, taches, updatedAt: new Date().toISOString() }
-    await db.saveDossier(updated, authUser?.id)
+    // UI optimiste : on met à jour l'écran TOUT DE SUITE
     dispatch({ type: 'UPDATE_DOSSIER', dossier: updated })
-    const tache = taches.find(t => t.id === tacheId)
-    if (tache?.done) await log(dossierId, 'Tâche complétée', tache.titre)
+    try {
+      // sauvegarde en arrière-plan, avec timeout
+      await withTimeout(db.saveDossier(updated, authUser?.id), 4000)
+      const tache = taches.find(t => t.id === tacheId)
+      if (tache?.done) log(dossierId, 'Tâche complétée', tache.titre)
+    } catch (err) {
+      // échec : on annule visuellement (la case revient à son état précédent)
+      dispatch({ type: 'UPDATE_DOSSIER', dossier })
+      console.warn('[toggleTache] sauvegarde échouée, rollback', err.message)
+    }
   }, [state.dossiers, authUser])
 
   const ajouterTache = useCallback(async (dossierId, titre) => {
