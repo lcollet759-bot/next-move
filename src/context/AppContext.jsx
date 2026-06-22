@@ -243,7 +243,15 @@ export function AppProvider({ children }) {
 
     const { data: { subscription } } = onAuthStateChange(async (event, session) => {
       if (session?.user) {
-        const profile = await getUserProfile(session.user.id)
+        let profile = null
+        try {
+          profile = await withTimeout(getUserProfile(session.user.id), 3000)
+        } catch (err) {
+          console.warn('[auth] getUserProfile timeout au login, connexion quand même', err.message)
+          setAuthUser(session.user)
+          setAuthErrorMessage('')
+          return
+        }
         if (!profile?.actif) {
           await signOut()
           setAuthUser(null)
