@@ -645,10 +645,18 @@ export function AppProvider({ children }) {
 
   // ── Suppression dossier ───────────────────────────────────────────────────
   const supprimerDossier = useCallback(async (id) => {
-    await db.deleteDossier(id, authUser?.id)
+    const dossier = state.dossiers.find(d => d.id === id)
+    // UI optimiste : retrait immédiat de l'écran
     removeReminder(id)
     dispatch({ type: 'DELETE_DOSSIER', id })
-  }, [authUser])
+    try {
+      await withTimeout(db.deleteDossier(id, authUser?.id), 4000)
+    } catch (err) {
+      // échec : on restaure le dossier (ADD_DOSSIER le ré-insère)
+      if (dossier) dispatch({ type: 'ADD_DOSSIER', dossier })
+      console.warn('[supprimerDossier] suppression échouée, rollback', err.message)
+    }
+  }, [state.dossiers, authUser])
 
   // ── Clé API ───────────────────────────────────────────────────────────────
   const setApiKey = useCallback((key) => {
