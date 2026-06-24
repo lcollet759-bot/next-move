@@ -379,10 +379,14 @@ export default function Planning({ forceStep }) {
     const today = todayISO()
     const np = { id: planning?.id || uuid(), date: today, heuresDisponibles: heuresTotales,
       tachesPlanifiees, createdAt: planning?.createdAt || new Date().toISOString() }
-    await savePlanning(np, authUser?.id)
+    // UI optimiste : on affiche et on cache le planning TOUT DE SUITE
     localStorage.setItem(PLANNING_KEY(today), JSON.stringify(np))
     sessionStorage.setItem('nm-planning-visite', today)
     setPlanning(np); setHeuresPick(heuresTotales)
+    // sauvegarde DB en arrière-plan, non bloquante (le planning est déjà en cache local)
+    savePlanning(np, authUser?.id).catch((err) => {
+      console.warn('[sauvegarderPlanning] sauvegarde DB échouée, planning gardé en local', err?.message)
+    })
   }
 
   const handleEditSave = async (tacheId, draft) => {
