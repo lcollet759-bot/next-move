@@ -535,8 +535,15 @@ export function AppProvider({ children }) {
       updatedAt:  new Date().toISOString()
     }
 
-    await db.saveDossier(updated, authUser?.id)
+    // UI optimiste : on met à jour l'écran TOUT DE SUITE
     dispatch({ type: 'UPDATE_DOSSIER', dossier: updated })
+    try {
+      await withTimeout(db.saveDossier(updated, authUser?.id), 4000)
+    } catch (err) {
+      // échec : on annule visuellement (le dossier revient à son état précédent)
+      dispatch({ type: 'UPDATE_DOSSIER', dossier })
+      console.warn('[mettreAJourDossier] sauvegarde échouée, rollback', err.message)
+    }
 
     if (updated.echeance) setReminder(updated.id, updated.titre, updated.echeance)
     else removeReminder(updated.id)
