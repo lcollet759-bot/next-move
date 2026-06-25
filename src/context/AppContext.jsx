@@ -22,6 +22,8 @@ function withTimeout(promise, ms = 3000) {
   ])
 }
 
+const estTimeout = (err) => err?.message?.startsWith('Timeout après')
+
 function todayISO() {
   return new Date().toISOString().split('T')[0]
 }
@@ -538,11 +540,13 @@ export function AppProvider({ children }) {
     // UI optimiste : on met à jour l'écran TOUT DE SUITE
     dispatch({ type: 'UPDATE_DOSSIER', dossier: updated })
     try {
-      await withTimeout(db.saveDossier(updated, authUser?.id), 4000)
+      await withTimeout(db.saveDossier(updated, authUser?.id), 12000)
     } catch (err) {
       // échec : on annule visuellement (le dossier revient à son état précédent)
-      dispatch({ type: 'UPDATE_DOSSIER', dossier })
-      console.warn('[mettreAJourDossier] sauvegarde échouée, rollback', err.message)
+      if (!estTimeout(err)) {
+        dispatch({ type: 'UPDATE_DOSSIER', dossier })
+      }
+      console.warn('[mettreAJourDossier] sauvegarde', estTimeout(err) ? 'timeout, état conservé' : 'échouée, rollback', err.message)
     }
 
     if (updated.echeance) setReminder(updated.id, updated.titre, updated.echeance)
@@ -581,13 +585,15 @@ export function AppProvider({ children }) {
     dispatch({ type: 'UPDATE_DOSSIER', dossier: updated })
     try {
       // sauvegarde en arrière-plan, avec timeout
-      await withTimeout(db.saveDossier(updated, authUser?.id), 4000)
+      await withTimeout(db.saveDossier(updated, authUser?.id), 12000)
       const tache = taches.find(t => t.id === tacheId)
       if (tache?.done) log(dossierId, 'Tâche complétée', tache.titre)
     } catch (err) {
       // échec : on annule visuellement (la case revient à son état précédent)
-      dispatch({ type: 'UPDATE_DOSSIER', dossier })
-      console.warn('[toggleTache] sauvegarde échouée, rollback', err.message)
+      if (!estTimeout(err)) {
+        dispatch({ type: 'UPDATE_DOSSIER', dossier })
+      }
+      console.warn('[toggleTache] sauvegarde', estTimeout(err) ? 'timeout, état conservé' : 'échouée, rollback', err.message)
     }
   }, [state.dossiers, authUser])
 
@@ -601,11 +607,13 @@ export function AppProvider({ children }) {
     // UI optimiste : on met à jour l'écran TOUT DE SUITE
     dispatch({ type: 'UPDATE_DOSSIER', dossier: updated })
     try {
-      await withTimeout(db.saveDossier(updated, authUser?.id), 4000)
+      await withTimeout(db.saveDossier(updated, authUser?.id), 12000)
     } catch (err) {
       // échec : on annule visuellement (la tâche ajoutée disparaît)
-      dispatch({ type: 'UPDATE_DOSSIER', dossier })
-      console.warn('[ajouterTache] sauvegarde échouée, rollback', err.message)
+      if (!estTimeout(err)) {
+        dispatch({ type: 'UPDATE_DOSSIER', dossier })
+      }
+      console.warn('[ajouterTache] sauvegarde', estTimeout(err) ? 'timeout, état conservé' : 'échouée, rollback', err.message)
     }
   }, [state.dossiers, authUser])
 
@@ -616,11 +624,13 @@ export function AppProvider({ children }) {
     // UI optimiste : on met à jour l'écran TOUT DE SUITE
     dispatch({ type: 'UPDATE_DOSSIER', dossier: updated })
     try {
-      await withTimeout(db.saveDossier(updated, authUser?.id), 4000)
+      await withTimeout(db.saveDossier(updated, authUser?.id), 12000)
     } catch (err) {
       // échec : on annule visuellement (la tâche supprimée réapparaît)
-      dispatch({ type: 'UPDATE_DOSSIER', dossier })
-      console.warn('[supprimerTache] sauvegarde échouée, rollback', err.message)
+      if (!estTimeout(err)) {
+        dispatch({ type: 'UPDATE_DOSSIER', dossier })
+      }
+      console.warn('[supprimerTache] sauvegarde', estTimeout(err) ? 'timeout, état conservé' : 'échouée, rollback', err.message)
     }
   }, [state.dossiers, authUser])
 
@@ -650,11 +660,13 @@ export function AppProvider({ children }) {
     removeReminder(id)
     dispatch({ type: 'DELETE_DOSSIER', id })
     try {
-      await withTimeout(db.deleteDossier(id, authUser?.id), 4000)
+      await withTimeout(db.deleteDossier(id, authUser?.id), 12000)
     } catch (err) {
       // échec : on restaure le dossier (ADD_DOSSIER le ré-insère)
-      if (dossier) dispatch({ type: 'ADD_DOSSIER', dossier })
-      console.warn('[supprimerDossier] suppression échouée, rollback', err.message)
+      if (!estTimeout(err)) {
+        if (dossier) dispatch({ type: 'ADD_DOSSIER', dossier })
+      }
+      console.warn('[supprimerDossier] suppression', estTimeout(err) ? 'timeout, état conservé' : 'échouée, rollback', err.message)
     }
   }, [state.dossiers, authUser])
 
