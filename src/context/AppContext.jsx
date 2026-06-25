@@ -490,7 +490,8 @@ export function AppProvider({ children }) {
           : { ...t, titre: t.titre?.trim() || '' }
       ).filter(t => t.titre),
       createdAt:       new Date().toISOString(),
-      updatedAt:       new Date().toISOString()
+      updatedAt:       new Date().toISOString(),
+      lastActionAt:    new Date().toISOString(),
     }
 
     await db.saveDossier(dossier, authUser?.id)
@@ -534,7 +535,10 @@ export function AppProvider({ children }) {
       urgence,
       importance,
       quadrant:   calcQuadrant(urgence, importance),
-      updatedAt:  new Date().toISOString()
+      updatedAt:  new Date().toISOString(),
+      lastActionAt: (updates.etat !== undefined || updates.echeance !== undefined)
+        ? new Date().toISOString()
+        : dossier.lastActionAt
     }
 
     // UI optimiste : on met à jour l'écran TOUT DE SUITE
@@ -580,7 +584,8 @@ export function AppProvider({ children }) {
     const dossier = state.dossiers.find(d => d.id === dossierId)
     if (!dossier) return
     const taches  = dossier.taches.map(t => t.id === tacheId ? { ...t, done: !t.done } : t)
-    const updated = { ...dossier, taches, updatedAt: new Date().toISOString() }
+    const now = new Date().toISOString()
+    const updated = { ...dossier, taches, updatedAt: now, lastActionAt: now }
     // UI optimiste : on met à jour l'écran TOUT DE SUITE
     dispatch({ type: 'UPDATE_DOSSIER', dossier: updated })
     try {
@@ -603,7 +608,8 @@ export function AppProvider({ children }) {
     const dossier = state.dossiers.find(d => d.id === dossierId)
     if (!dossier) return
     const tache   = { id: uuid(), titre: titreTrim, done: false }
-    const updated = { ...dossier, taches: [...dossier.taches, tache], updatedAt: new Date().toISOString() }
+    const now = new Date().toISOString()
+    const updated = { ...dossier, taches: [...dossier.taches, tache], updatedAt: now, lastActionAt: now }
     // UI optimiste : on met à jour l'écran TOUT DE SUITE
     dispatch({ type: 'UPDATE_DOSSIER', dossier: updated })
     try {
@@ -620,7 +626,8 @@ export function AppProvider({ children }) {
   const supprimerTache = useCallback(async (dossierId, tacheId) => {
     const dossier = state.dossiers.find(d => d.id === dossierId)
     if (!dossier) return
-    const updated = { ...dossier, taches: dossier.taches.filter(t => t.id !== tacheId), updatedAt: new Date().toISOString() }
+    const now = new Date().toISOString()
+    const updated = { ...dossier, taches: dossier.taches.filter(t => t.id !== tacheId), updatedAt: now, lastActionAt: now }
     // UI optimiste : on met à jour l'écran TOUT DE SUITE
     dispatch({ type: 'UPDATE_DOSSIER', dossier: updated })
     try {
