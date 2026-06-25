@@ -92,6 +92,7 @@ function toRow(d) {
     taches:             d.taches    ?? [],
     created_at:         d.createdAt,
     updated_at:         d.updatedAt,
+    last_action_at:     d.lastActionAt ?? d.updatedAt,
   }
 }
 
@@ -112,6 +113,7 @@ function fromRow(r) {
     taches:           Array.isArray(r.taches) ? r.taches : [],
     createdAt:        r.created_at,
     updatedAt:        r.updated_at,
+    lastActionAt:     r.last_action_at ?? r.updated_at,
   }
 }
 
