@@ -887,7 +887,7 @@ export default function Planning({ forceStep }) {
             <button className="btn btn-ghost" style={{ flex:1 }} onClick={handleRecalculer} onTouchEnd={handleRecalculer} disabled={generating}>
               {generating ? '…' : '↺ Recalculer'}
             </button>
-            <button className="btn btn-primary" style={{ flex:2 }} onClick={handleConfirmer} onTouchEnd={handleConfirmer} disabled={generating}>
+            <button className="btn btn-primary" style={{ flex:2 }} onClick={handleConfirmer} onTouchEnd={(e) => { e.preventDefault(); handleConfirmer() }} disabled={generating}>
               Confirmer ce planning
             </button>
           </div>
