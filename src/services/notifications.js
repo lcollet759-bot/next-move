@@ -1,19 +1,4 @@
 const REMINDERS_KEY = 'next-move-reminders'
-const WEEKLY_KEY    = 'nm-weekly-notif'
-
-// ── Revue hebdomadaire — helpers pour le modal in-app ─────────────────────────
-
-// Retourne true si c'est lundi ET que le modal n'a pas encore été affiché cette semaine.
-export function shouldShowWeeklyReview() {
-  const now = new Date()
-  if (now.getDay() !== 1) return false          // 0=dim, 1=lun, …
-  return localStorage.getItem(WEEKLY_KEY) !== isoWeekKey(now)
-}
-
-// Marque la revue de cette semaine comme affichée.
-export function markWeeklyReviewShown() {
-  localStorage.setItem(WEEKLY_KEY, isoWeekKey(new Date()))
-}
 
 // ── Escalade Q4 → Important ───────────────────────────────────────────────────
 export function notifyEscalade(titre) {
@@ -21,16 +6,6 @@ export function notifyEscalade(titre) {
     'Dossier devenu prioritaire',
     `"${titre}" attend depuis 15 jours — il devient important.`
   )
-}
-
-// Calcule la clé de semaine ISO (ex : "2026-W15") pour un Date donné.
-function isoWeekKey(date) {
-  const d   = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()))
-  const day = d.getUTCDay() || 7
-  d.setUTCDate(d.getUTCDate() + 4 - day)
-  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1))
-  const week      = Math.ceil(((d - yearStart) / 86_400_000 + 1) / 7)
-  return `${d.getUTCFullYear()}-W${String(week).padStart(2, '0')}`
 }
 
 export async function requestPermission() {

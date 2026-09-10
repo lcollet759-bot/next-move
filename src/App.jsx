@@ -1,10 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { useApp } from './context/AppContext'
-import { shouldShowWeeklyReview, markWeeklyReviewShown } from './services/notifications'
 import Navigation from './components/Navigation'
 import ScrollToTop from './components/ScrollToTop'
-import WeeklyReviewModal from './components/WeeklyReviewModal'
 import Login from './pages/Login'
 import Inscription from './pages/Inscription'
 import Aujourdhui from './pages/Aujourdhui'
@@ -16,16 +14,6 @@ import Reglages from './pages/Reglages'
 import ModeFocus from './pages/ModeFocus'
 import Routines from './pages/Routines'
 import Admin from './pages/Admin'
-
-function todayISO() { return new Date().toISOString().split('T')[0] }
-
-// Un dossier est "snoozé" si une date de snooze localStorage existe et > today
-function estSnoozé(dossierId) {
-  try {
-    const date = localStorage.getItem(`nm-snooze-${dossierId}`)
-    return !!(date && date > todayISO())
-  } catch { return false }
-}
 
 
 // ── App ───────────────────────────────────────────────────────────────────────
@@ -74,25 +62,6 @@ export default function App() {
 }
 
 function AuthenticatedApp() {
-  const { dossiers, loading, mettreAJourDossier, supprimerDossier,
-          userProfile, authUser } = useApp()
-  const [reviewDossiers, setReviewDossiers] = useState(null)  // null = pas encore vérifié
-
-  useEffect(() => {
-    if (loading) return
-    const debug = window.location.search.includes('debug=weekly')
-    if (!debug && !shouldShowWeeklyReview()) return
-
-    // Q4 actifs, non snoozés via "Revient lundi prochain"
-    const q4 = dossiers.filter(d =>
-      d.quadrant === 4 && d.etat !== 'clos' && !estSnoozé(d.id)
-    )
-    if (!debug) markWeeklyReviewShown()   // marquer immédiatement pour éviter les doublons
-    if (q4.length === 0) return
-
-    setReviewDossiers(q4)
-  }, [loading])  // se déclenche une seule fois quand les dossiers sont chargés
-
   return (
     <div className="app-shell">
       <ScrollToTop />
@@ -112,17 +81,6 @@ function AuthenticatedApp() {
         </Routes>
       </main>
       <Navigation />
-
-      {reviewDossiers && (
-        <WeeklyReviewModal
-          dossiers={reviewDossiers}
-          prenom={userProfile?.prenom}
-          authUser={authUser}
-          onClose={() => setReviewDossiers(null)}
-          mettreAJourDossier={mettreAJourDossier}
-          supprimerDossier={supprimerDossier}
-        />
-      )}
     </div>
   )
 }
