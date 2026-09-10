@@ -119,6 +119,25 @@ export default function Aujourdhui() {
     }
   }
 
+  const creerRapideAccueil = async () => {
+    const lignes = bdTexte.split('\n').map(l => l.trim()).filter(Boolean)
+    if (lignes.length === 0) return
+    setBdLoading(true); setBdError('')
+    try {
+      const titre = lignes.length === 1
+        ? (lignes[0].length > 100 ? lignes[0].slice(0, 100) + '…' : lignes[0])
+        : `Notes rapides — ${new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}`
+      const dossier = await creerDossier({ titre, taches: lignes, origine: 'vocal' })
+      setBdTexte('')
+      setShowBD(false)
+      navigate(`/dossiers/${dossier.id}`)
+    } catch (e) {
+      setBdError(e.message || 'Erreur lors de la création.')
+    } finally {
+      setBdLoading(false)
+    }
+  }
+
   const closeBD = () => { if (!bdLoading) { setShowBD(false); setBdTexte(''); setBdError('') } }
 
   // ── Données état actif ────────────────────────────────────────────────────
@@ -393,6 +412,12 @@ export default function Aujourdhui() {
                 }
               </button>
             </div>
+            <button className="btn btn-ghost btn-full btn-sm" style={{ marginTop: 8 }}
+              onClick={creerRapideAccueil}
+              onTouchEnd={(e) => { e.preventDefault(); creerRapideAccueil() }}
+              disabled={bdLoading || !bdTexte.trim()}>
+              ⚡ Créer directement (sans IA)
+            </button>
           </div>
         </div>
       )}
