@@ -124,8 +124,6 @@ Ne jamais modifier le cœur existant sans raison explicite :
 
 **Navigation (barre du bas) :** 3 onglets — Aujourd'hui (`/`) · Dossiers (`/dossiers`) · Journal (`/journal`).
 Planning est définitivement supprimé : plus d'onglet, plus de route `/planning`, plus de `src/pages/Planning.jsx`.
-Reste à nettoyer : `ModeFocus.jsx` renvoie encore vers `/planning` au retour quand il reçoit un `planningDate` (D5),
-et les fonctions de planification de `src/services/claude.js` (D6).
 
 **Fonctionnel en prod :**
 - Capture vocale et texte, Brain Dump → dossiers automatiques
