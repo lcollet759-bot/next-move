@@ -211,25 +211,27 @@ export default function DossierDetail() {
           </button>
 
           {/* Menu ··· */}
-          {!isClos && (
-            <div className="dd-menu-wrap">
-              <button className="dd-menu-btn" onClick={() => setShowMenu(v => !v)}>···</button>
-              {showMenu && (
-                <>
-                  <div className="dd-menu-backdrop" onClick={() => setShowMenu(false)} />
-                  <div className="dd-menu-card">
-                    <button className="dd-menu-item" onClick={() => { setShowMenu(false); setShowConfirmClose(true) }} onTouchEnd={(e) => { e.preventDefault(); setShowMenu(false); setShowConfirmClose(true) }}>
-                      Clôturer ce dossier
-                    </button>
-                    <div className="dd-menu-divider" />
-                    <button className="dd-menu-item dd-menu-item-danger" onClick={() => { setShowMenu(false); setShowConfirmDel(true) }} onTouchEnd={(e) => { e.preventDefault(); setShowMenu(false); setShowConfirmDel(true) }}>
-                      Supprimer définitivement
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
-          )}
+          <div className="dd-menu-wrap">
+            <button className="dd-menu-btn" onClick={() => setShowMenu(v => !v)}>···</button>
+            {showMenu && (
+              <>
+                <div className="dd-menu-backdrop" onClick={() => setShowMenu(false)} />
+                <div className="dd-menu-card">
+                  {!isClos && (
+                    <>
+                      <button className="dd-menu-item" onClick={() => { setShowMenu(false); setShowConfirmClose(true) }} onTouchEnd={(e) => { e.preventDefault(); setShowMenu(false); setShowConfirmClose(true) }}>
+                        Clôturer ce dossier
+                      </button>
+                      <div className="dd-menu-divider" />
+                    </>
+                  )}
+                  <button className="dd-menu-item dd-menu-item-danger" onClick={() => { setShowMenu(false); setShowConfirmDel(true) }} onTouchEnd={(e) => { e.preventDefault(); setShowMenu(false); setShowConfirmDel(true) }}>
+                    Supprimer définitivement
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
         </div>
 
         <h1 className="dd-titre">{dossier.titre}</h1>

@@ -167,7 +167,19 @@ export default function DossierSheet({ dossierId, onClose }) {
     haptic('success'); await save({ etat: 'clos' }); setConfirmType(null)
   }
   const handleSupprimer = async () => {
-    haptic('medium'); await supprimerDossier(dossierId); handleClose()
+    haptic('medium')
+    const el = sheetRef.current
+    if (el) {
+      el.style.transition = 'transform 0.3s cubic-bezier(0.32, 0.72, 0, 1)'
+      el.style.transform  = 'translateY(100%)'
+      setTimeout(async () => {
+        await supprimerDossier(dossierId)
+        onClose()
+      }, 290)
+    } else {
+      await supprimerDossier(dossierId)
+      onClose()
+    }
   }
   const handleEcheanceSave = async () => {
     await save({ echeance: echeance || null }); setShowEcheanceEdit(false)
@@ -239,33 +251,35 @@ export default function DossierSheet({ dossierId, onClose }) {
             </div>
 
             <div className="dss-right-actions">
-              {!isClos && (
-                <div className="dss-menu-wrap">
-                  <button className="dss-menu-btn" onClick={() => setShowMenu(v => !v)}>···</button>
-                  {showMenu && (
-                    <>
-                      <div className="dss-menu-backdrop" onClick={() => setShowMenu(false)} />
-                      <div className="dss-menu-card">
-                        <button
-                          className="dss-menu-item"
-                          onClick={() => { setShowMenu(false); setConfirmType('cloturer') }}
-                          onTouchEnd={(e) => { e.preventDefault(); setShowMenu(false); setConfirmType('cloturer') }}
-                        >
-                          Clôturer ce dossier
-                        </button>
-                        <div className="dss-menu-divider" />
-                        <button
-                          className="dss-menu-item dss-menu-item-danger"
-                          onClick={() => { setShowMenu(false); setConfirmType('supprimer') }}
-                          onTouchEnd={(e) => { e.preventDefault(); setShowMenu(false); setConfirmType('supprimer') }}
-                        >
-                          Supprimer définitivement
-                        </button>
-                      </div>
-                    </>
-                  )}
-                </div>
-              )}
+              <div className="dss-menu-wrap">
+                <button className="dss-menu-btn" onClick={() => setShowMenu(v => !v)}>···</button>
+                {showMenu && (
+                  <>
+                    <div className="dss-menu-backdrop" onClick={() => setShowMenu(false)} />
+                    <div className="dss-menu-card">
+                      {!isClos && (
+                        <>
+                          <button
+                            className="dss-menu-item"
+                            onClick={() => { setShowMenu(false); setConfirmType('cloturer') }}
+                            onTouchEnd={(e) => { e.preventDefault(); setShowMenu(false); setConfirmType('cloturer') }}
+                          >
+                            Clôturer ce dossier
+                          </button>
+                          <div className="dss-menu-divider" />
+                        </>
+                      )}
+                      <button
+                        className="dss-menu-item dss-menu-item-danger"
+                        onClick={() => { setShowMenu(false); setConfirmType('supprimer') }}
+                        onTouchEnd={(e) => { e.preventDefault(); setShowMenu(false); setConfirmType('supprimer') }}
+                      >
+                        Supprimer définitivement
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
 
               <button className="dss-close-btn" onClick={handleClose} aria-label="Fermer">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
