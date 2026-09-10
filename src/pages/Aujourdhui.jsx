@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 import { analyserBrainDump, genererMessageMatinal } from '../services/claude'
+import { getRoutines } from '../services/db'
 
 function todayISO() { return new Date().toISOString().split('T')[0] }
 const RESUME_KEY = (d) => `nm-resume-${d}`
@@ -17,8 +18,18 @@ function todayFR() {
   return new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })
 }
 
+function routinesDuJour(routines) {
+  const now = new Date(); const dow = now.getDay(); const dom = now.getDate()
+  return routines.filter(r => {
+    if (r.recurrence === 'daily')   return true
+    if (r.recurrence === 'weekly')  return r.jourSemaine === dow
+    if (r.recurrence === 'monthly') return r.jourMois    === dom
+    return false
+  })
+}
+
 export default function Aujourdhui() {
-  const { dossiersAujourdhui, dossiers, loading, apiKey, creerDossier } = useApp()
+  const { dossiersAujourdhui, dossiers, loading, apiKey, creerDossier, authUser } = useApp()
   const navigate = useNavigate()
 
   const [bdTexte,   setBdTexte]   = useState('')
@@ -26,6 +37,27 @@ export default function Aujourdhui() {
   const [bdError,   setBdError]   = useState('')
   const [showBD,    setShowBD]    = useState(false)
   const [indexTache, setIndexTache] = useState(0)
+
+  // ── Routines du jour ───────────────────────────────────────────────────────
+  // Coche "fait aujourd'hui" : localStorage uniquement (clé datée), jamais Supabase
+  const [routinesJour, setRoutinesJour] = useState([])
+  const [routinesFaites, setRoutinesFaites] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(`nm-routines-faites-${todayISO()}`)) || [] }
+    catch { return [] }
+  })
+
+  useEffect(() => {
+    if (!authUser) return
+    getRoutines(authUser.id).then(r => setRoutinesJour(routinesDuJour(r))).catch(() => {})
+  }, [authUser])
+
+  const toggleRoutineFaite = (id) => {
+    setRoutinesFaites(prev => {
+      const next = prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+      localStorage.setItem(`nm-routines-faites-${todayISO()}`, JSON.stringify(next))
+      return next
+    })
+  }
 
   // ── Résumé IA matinal ──────────────────────────────────────────────────────
   const [resumeIA,      setResumeIA]      = useState(() => {
@@ -257,6 +289,25 @@ export default function Aujourdhui() {
                       </div>
                     )
                   })}
+                </div>
+              </div>
+            )}
+
+            {/* ── Routines du jour ─────────────────────────────────── */}
+            {routinesJour.length > 0 && (
+              <div className="aj-section">
+                <div className="aj-vline aj-vline-routine" />
+                <div className="aj-section-body">
+                  <span className="aj-slabel aj-slabel-routine">Routines du jour</span>
+                  {routinesJour.map(r => (
+                    <div key={r.id} className="aj-routine-row" onClick={() => toggleRoutineFaite(r.id)}>
+                      <span className={`aj-routine-check${routinesFaites.includes(r.id) ? ' aj-routine-checked' : ''}`} />
+                      <span className={`aj-routine-titre${routinesFaites.includes(r.id) ? ' aj-routine-done' : ''}`}>
+                        {r.titre}
+                      </span>
+                      <span className="aj-routine-duree">{r.dureeMin} min</span>
+                    </div>
+                  ))}
                 </div>
               </div>
             )}
@@ -685,6 +736,58 @@ const ajCSS = `
     line-height: 1.4;
   }
   .aj-next-duree {
+    font-size: 11px;
+    color: #A09080;
+    flex-shrink: 0;
+  }
+
+  /* Routines du jour */
+  .aj-vline-routine  { background: #DDD8CE; }
+  .aj-slabel-routine { color: #8A7A6A; }
+  .aj-routine-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 0;
+    border-bottom: 1px solid #F0EBE3;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .aj-routine-row:last-child { border-bottom: none; }
+  .aj-routine-check {
+    width: 18px;
+    height: 18px;
+    border-radius: 5px;
+    border: 1.5px solid #DDD8CE;
+    background: #fff;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .aj-routine-check.aj-routine-checked {
+    background: #1C3829;
+    border-color: #1C3829;
+  }
+  .aj-routine-check.aj-routine-checked::after {
+    content: '✓';
+    color: #fff;
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1;
+  }
+  .aj-routine-titre {
+    flex: 1;
+    font-size: 14px;
+    color: #2A1F14;
+    line-height: 1.4;
+  }
+  .aj-routine-titre.aj-routine-done {
+    text-decoration: line-through;
+    color: #A09080;
+  }
+  .aj-routine-duree {
     font-size: 11px;
     color: #A09080;
     flex-shrink: 0;
