@@ -281,47 +281,6 @@ export async function deleteEtape(id, userId) {
   raise(error, 'deleteEtape')
 }
 
-// ── Plannings (calendrier adaptatif) ─────────────────────────────────────────
-
-function toPlanningRow(p) {
-  return {
-    id:                 p.id,
-    date:               p.date,
-    heures_disponibles: p.heuresDisponibles,
-    taches_planifiees:  p.tachesPlanifiees ?? [],
-    created_at:         p.createdAt,
-  }
-}
-
-function fromPlanningRow(r) {
-  return {
-    id:               r.id,
-    date:             r.date,
-    heuresDisponibles: r.heures_disponibles,
-    tachesPlanifiees:  Array.isArray(r.taches_planifiees) ? r.taches_planifiees : [],
-    createdAt:         r.created_at,
-  }
-}
-
-export async function getPlanningForDate(date, userId) {
-  const { data, error } = await supabase
-    .from('plannings')
-    .select('*')
-    .eq('date', date)
-    .eq('user_id', userId)
-    .maybeSingle()
-  raise(error, 'getPlanningForDate')
-  return data ? fromPlanningRow(data) : null
-}
-
-export async function savePlanning(planning, userId) {
-  const row = { ...toPlanningRow(planning), user_id: userId }
-  const { error } = await supabase
-    .from('plannings')
-    .upsert(row, { onConflict: 'date' })
-  raise(error, 'savePlanning')
-}
-
 // ── Routines ──────────────────────────────────────────────────────────────────
 
 function toRoutineRow(r) {
