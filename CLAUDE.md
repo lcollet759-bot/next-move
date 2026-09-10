@@ -109,7 +109,8 @@ Ne jamais modifier le cœur existant sans raison explicite :
 
 ## VÉRIFICATION AVANT CHAQUE PUSH
 
-- Navigation entre les 5 onglets fonctionne
+- Navigation entre les 3 onglets (Aujourd'hui / Dossiers / Journal) fonctionne
+- Réglages → Routines : liste, activer/désactiver, ajout, suppression
 - Création d'un dossier (mode Texte et Document)
 - Affichage du résumé matinal sur l'onglet Aujourd'hui
 - Détail d'un dossier : édition inline, tâches, changement d'état
@@ -117,15 +118,20 @@ Ne jamais modifier le cœur existant sans raison explicite :
 
 ---
 
-## ÉTAT ACTUEL DU PROJET (avril 2026)
+## ÉTAT ACTUEL DU PROJET (avril 2026 · mis à jour septembre 2026)
+
+**Navigation (barre du bas) :** 3 onglets — Aujourd'hui (`/`) · Dossiers (`/dossiers`) · Journal (`/journal`).
+Planning est définitivement supprimé : plus d'onglet, plus de route `/planning`, plus de `src/pages/Planning.jsx`.
+Reste à nettoyer : `ModeFocus.jsx` renvoie encore vers `/planning` au retour quand il reçoit un `planningDate` (D5),
+et les fonctions de planification de `src/services/claude.js` (D6).
 
 **Fonctionnel en prod :**
 - Capture vocale et texte, Brain Dump → dossiers automatiques
 - Matrice Eisenhower automatique (invisible pour l'utilisateur)
-- Planning IA journalier adaptatif
 - Mode Focus avec micro-récompenses
 - Dossier Vivant avec historique
-- Routines récurrentes
+- Routines récurrentes : écran dédié `src/pages/Routines.jsx` (route `/routines`, accès via Réglages) +
+  section « Routines du jour » sur l'onglet Aujourd'hui
 - Journal automatique
 - Pipeline document sécurisé (pdfjs-dist, truncation 2000 chars)
 - WeeklyReviewModal (fonctionnel, hors charte visuelle)
