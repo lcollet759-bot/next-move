@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { useApp } from '../context/AppContext'
-import { getEtapesForDossier } from '../services/db'
+import { useDossier } from '../hooks/useDossier'
 import EtatBadge from '../components/EtatBadge'
 import { haptic } from '../utils/haptic'
 
@@ -100,12 +99,10 @@ function InlineField({ value, onSave, multiline = false, placeholder = '', style
 export default function DossierDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { dossiers, mettreAJourDossier, toggleTache, ajouterTache, supprimerTache,
-          supprimerDossier, ajouterEtapeManuelle, supprimerEtape, authUser } = useApp()
+  const { dossier, etapes, isClos, tachesDone, total, pct,
+          mettreAJourDossier, toggleTache, ajouterTache, supprimerTache,
+          supprimerDossier, ajouterEtapeManuelle, supprimerEtape, reloadEtapes, save } = useDossier(id)
 
-  const dossier = dossiers.find(d => d.id === id)
-
-  const [etapes,           setEtapes]           = useState([])
   const [activeTab,        setActiveTab]         = useState('taches')
   const [showMenu,         setShowMenu]          = useState(false)
   const [showEtatSheet,    setShowEtatSheet]     = useState(false)
@@ -128,14 +125,9 @@ export default function DossierDetail() {
   const [newEtapeTexte,  setNewEtapeTexte]  = useState('')
   const [newEtapeStatut, setNewEtapeStatut] = useState('fait')
 
-  const reloadEtapes = () => getEtapesForDossier(id, authUser?.id).then(setEtapes)
-
   useEffect(() => {
-    if (dossier) {
-      setEcheance(dossier.echeance || '')
-      reloadEtapes()
-    }
-  }, [dossier, id]) // eslint-disable-line
+    if (dossier) setEcheance(dossier.echeance || '')
+  }, [dossier]) // eslint-disable-line
 
   useEffect(() => {
     if (showAddTache) newTacheRef.current?.focus()
@@ -155,15 +147,9 @@ export default function DossierDetail() {
     </div>
   )
 
-  const isClos      = dossier.etat === 'clos'
-  const tachesDone  = dossier.taches.filter(t => t.done).length
-  const total       = dossier.taches.length
-  const pct         = total > 0 ? (tachesDone / total) * 100 : 0
   const blocageCause = dossier.etat === 'bloque' && !isClos ? analyserCauseBlocage(dossier) : null
   const joursEch    = daysUntil(dossier.echeance)
   const echProche   = joursEch !== null && joursEch <= 7
-
-  const save = (updates) => mettreAJourDossier(id, updates).then(() => reloadEtapes())
 
   const handleEtatChange = async (etat) => { haptic('light'); await save({ etat }); setShowEtatSheet(false) }
   const handleClose      = async ()      => { haptic('success'); await save({ etat: 'clos' }); setShowConfirmClose(false); navigate('/dossiers') }
