@@ -102,7 +102,12 @@ export default function Aujourdhui() {
     setIndexTache(i => Math.min(i + 1, toutesLesTaches.length - 1))
   }
   const allDossiers    = dossiers || dossiersAujourdhui
-  const dossiersAttente = allDossiers.filter(d => d.etat === 'attente_externe')
+  const dossiersAttente = allDossiers
+    .filter(d => d.etat === 'attente_externe')
+    .sort((a, b) => new Date(a.lastActionAt ?? a.updatedAt) - new Date(b.lastActionAt ?? b.updatedAt))
+  const joursAttentePremier = dossiersAttente[0]
+    ? Math.floor((new Date() - new Date(dossiersAttente[0].lastActionAt ?? dossiersAttente[0].updatedAt)) / 86_400_000)
+    : null
 
   const isEmpty = dossiersAujourdhui.length === 0
 
@@ -265,6 +270,9 @@ export default function Aujourdhui() {
                   <p className="aj-wait-titre">{dossiersAttente[0].titre}</p>
                   {dossiersAttente[0].organisme && (
                     <p className="aj-wait-org">{dossiersAttente[0].organisme}</p>
+                  )}
+                  {joursAttentePremier !== null && joursAttentePremier >= 15 && (
+                    <p className="aj-wait-relance">Aucun retour depuis {joursAttentePremier} jours — relancer ?</p>
                   )}
                   {dossiersAttente.length > 1 && (
                     <button className="aj-wait-more" onClick={() => navigate('/dossiers?filtre=attente')}>
@@ -693,6 +701,11 @@ const ajCSS = `
   .aj-wait-org {
     font-size: 12px;
     color: #A09080;
+    margin-bottom: 7px;
+  }
+  .aj-wait-relance {
+    font-size: 12px;
+    color: #C4623A;
     margin-bottom: 7px;
   }
   .aj-wait-more {
