@@ -29,7 +29,7 @@ Runtime cible : Android Chrome.
 ## FICHIERS CRITIQUES — NE JAMAIS MODIFIER SANS DISCUSSION
 
 - `src/context/AppContext.jsx` — état global de l'app
-- `src/lib/db.js` — accès Supabase
+- `src/services/db.js` — accès Supabase
 - `src/index.css` — Design System complet (toutes les variables CSS)
 - `vercel.json` — headers CSP requis pour pdfjs-dist worker
 
@@ -142,7 +142,7 @@ et les fonctions de planification de `src/services/claude.js` (D6).
 
 ## BUGS CONNUS (ne pas réintroduire)
 
-1. Planning : tâches faites réapparaissent après la journée
+1. ~~Planning : tâches faites réapparaissent après la journée~~ — sans objet (Planning supprimé)
 2. Mode Focus : "Fait ✓" ne valide pas dans Supabase
 3. Résumé IA matinal disparu depuis refonte Aujourdhui.jsx
 4. "En attente de retour" → lien pointe vers tous les dossiers au lieu du filtre attente
@@ -156,7 +156,9 @@ et les fonctions de planification de `src/services/claude.js` (D6).
 
 **Toujours commencer par :** `Montre-moi le code actuel de [fichier] sans rien modifier.`
 **Une modification à la fois** — jamais deux features majeures ensemble.
-**Terminer chaque session par :** `git add -A && git commit -m "..." && git push origin master`
+**Intégration d'une modif :** diff complet montré → attendre le « OK push » → `git add` des seuls fichiers
+concernés (jamais `git add -A`) → commit → `git merge --ff-only` sur master → `git push origin master` → suppression de la branche.
+Exception : modif de doc seule (CLAUDE.md) → commit + push directs, sans montrer le diff.
 
 **En cas de bug en boucle :**
 1. `git log --oneline -10`
