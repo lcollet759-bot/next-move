@@ -318,10 +318,16 @@ export default function Aujourdhui() {
                 <div className="aj-vline aj-vline-wait" />
                 <div className="aj-section-body">
                   <span className="aj-slabel aj-slabel-wait">En attente de retour</span>
-                  <p className="aj-wait-titre">{dossiersAttente[0].titre}</p>
-                  {dossiersAttente[0].organisme && (
-                    <p className="aj-wait-org">{dossiersAttente[0].organisme}</p>
-                  )}
+                  <div
+                    onClick={() => navigate(`/dossiers/${dossiersAttente[0].id}`)}
+                    onTouchEnd={(e) => { e.preventDefault(); navigate(`/dossiers/${dossiersAttente[0].id}`) }}
+                    style={{ cursor: 'pointer' }}
+                  >
+                    <p className="aj-wait-titre">{dossiersAttente[0].titre}</p>
+                    {dossiersAttente[0].organisme && (
+                      <p className="aj-wait-org">{dossiersAttente[0].organisme}</p>
+                    )}
+                  </div>
                   {joursAttentePremier !== null && joursAttentePremier >= 15 && (
                     <p className="aj-wait-relance">Aucun retour depuis {joursAttentePremier} jours — relancer ?</p>
                   )}
