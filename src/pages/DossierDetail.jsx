@@ -437,6 +437,7 @@ export default function DossierDetail() {
                           {formatDate(dossier.echeance)}
                           {echProche && joursEch === 0 && <span className="dd-ech-badge">Aujourd'hui !</span>}
                           {echProche && joursEch > 0  && <span className="dd-ech-badge">J−{joursEch}</span>}
+                          {!isClos && joursEch !== null && joursEch < 0 && <span className="dd-ech-badge dd-ech-badge-retard">En retard ({Math.abs(joursEch)} j)</span>}
                         </>
                       : <span style={{ color: '#A09080' }}>Aucune</span>
                     }

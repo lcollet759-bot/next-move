@@ -27,6 +27,11 @@ function DossierGridCard({ dossier, onClick }) {
   const pct   = total > 0 ? done / total : 0
   const color = quadrantColor(dossier.quadrant)
 
+  // Échéance dépassée — affichage calculé à la volée, rien n'est sauvegardé
+  const today    = new Date(); today.setHours(0, 0, 0, 0)
+  const echDate  = dossier.echeance ? new Date(dossier.echeance + 'T00:00:00') : null
+  const enRetard = echDate !== null && echDate < today && dossier.etat !== 'clos'
+
   return (
     <button className="td-card" onClick={onClick}>
       <div className="td-card-top">
@@ -44,9 +49,9 @@ function DossierGridCard({ dossier, onClick }) {
           <span className="td-count">{done}/{total}</span>
         </div>
       )}
-      {dossier.echeance && (
-        <span className="td-ech">
-          {new Date(dossier.echeance + 'T00:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}
+      {echDate && (
+        <span className="td-ech" style={enRetard ? { color: '#C4623A', fontWeight: 700 } : undefined}>
+          {echDate.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}
         </span>
       )}
     </button>
