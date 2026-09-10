@@ -293,7 +293,13 @@ export default function Capturer() {
         </header>
         <div className="section">
           {brainDumpResult.map((d, i) => (
-            <div key={i} className="card" style={{ marginBottom: 10 }}>
+            <div key={i} className="card" style={{ marginBottom: 10, position: 'relative' }}>
+              <button
+                className="bd-remove-btn"
+                onClick={() => setBrainDumpResult(list => { const next = list.filter((_, idx) => idx !== i); return next.length > 0 ? next : null })}
+                onTouchEnd={(e) => { e.preventDefault(); setBrainDumpResult(list => { const next = list.filter((_, idx) => idx !== i); return next.length > 0 ? next : null }) }}
+                aria-label="Retirer ce dossier"
+              >×</button>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
                 <QuadrantBadge quadrant={d.quadrant} />
                 {d.echeance && <span className="badge badge-surveille" style={{ fontSize: 11 }}>Échéance {d.echeance}</span>}
@@ -682,6 +688,14 @@ function CAP_STYLES() {
         background: #C4623A;
         animation: cap-pulse 1.3s ease-in-out infinite;
       }
+      .bd-remove-btn {
+        position: absolute; top: 8px; right: 8px;
+        width: 26px; height: 26px; border-radius: 50%;
+        border: none; background: var(--gray-light); color: var(--text-muted);
+        font-size: 16px; cursor: pointer; display: flex;
+        align-items: center; justify-content: center;
+      }
+      .bd-remove-btn:active { background: var(--border); }
 
       /* ── Document ── */
       .doc-import-panel { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; width: 100%; }
