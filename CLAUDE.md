@@ -18,7 +18,7 @@ Runtime cible : Android Chrome.
 | Élément | Valeur |
 |---|---|
 | Frontend | React + Vite (PWA) |
-| IA | API Claude Sonnet `claude-sonnet-4-20250514` |
+| IA | API Claude Sonnet `claude-sonnet-4-6` |
 | Base de données | Supabase (PostgreSQL) |
 | Déploiement | Vercel |
 | URL prod | next-move-mu.vercel.app |
