@@ -202,7 +202,7 @@ export default function Routines() {
           <div className="sheet" onClick={e => e.stopPropagation()}>
             <h3 style={{ fontSize: 18, fontWeight: 600, marginBottom: 8 }}>Supprimer cette routine ?</h3>
             <p style={{ fontSize: 14, color: '#A09080', marginBottom: 20, lineHeight: 1.5 }}>
-              « {aSupprimer.titre} » ne sera plus proposée dans ton planning. Cette action est définitive.
+              « {aSupprimer.titre} » ne sera plus proposée dans tes routines du jour. Cette action est définitive.
             </p>
             <div style={{ display: 'flex', gap: 10 }}>
               <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => setASupprimer(null)}>Annuler</button>
