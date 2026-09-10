@@ -2,11 +2,7 @@ import { useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 import { haptic } from '../utils/haptic'
-import { savePlanning } from '../services/db'
-import { recalculerApresExtension } from '../services/planning'
 import DossierSheet from '../components/DossierSheet'
-
-const PLANNING_KEY = (date) => `nm-planning-${date}`
 
 // ── Utilitaires ───────────────────────────────────────────────────────────────
 function fmtDuree(min) {
@@ -16,17 +12,13 @@ function fmtDuree(min) {
   return `${h}h`
 }
 
-function fmtLibere(doneIds, planningData) {
-  const total = doneIds.reduce((s, id) => {
-    const tp = planningData?.tachesPlanifiees.find(p => p.tacheId === id)
-    return s + (tp?.dureeMin ?? 45)
-  }, 0)
-  return fmtDuree(total)
+function fmtLibere(doneIds) {
+  return fmtDuree(doneIds.length * 45)
 }
 
 // ── Écran de fin ──────────────────────────────────────────────────────────────
-function EcranFin({ fait, doneIds, planningData, navigate, retourPath }) {
-  const libere = fmtLibere(doneIds, planningData)
+function EcranFin({ fait, doneIds, navigate, retourPath }) {
+  const libere = fmtLibere(doneIds)
   return (
     <div className="focus-page">
       <div className="focus-fin-wrap">
@@ -55,34 +47,16 @@ function EcranFin({ fait, doneIds, planningData, navigate, retourPath }) {
 
 // ── Page principale ───────────────────────────────────────────────────────────
 export default function ModeFocus() {
-  const { dossiersAujourdhui, toggleTache, authUser } = useApp()
+  const { dossiersAujourdhui, toggleTache } = useApp()
   const navigate = useNavigate()
   const location = useLocation()
 
-  const planningDate    = location.state?.planningDate    || null
   const brainDumpTaches = location.state?.brainDumpTaches || null
-  const from            = location.state?.from            || null
 
-  // Où revenir en quittant le Mode Focus : priorité à l'origine explicite
-  // ('today' = lancé depuis Aujourd'hui), sinon repli sur l'ancienne logique.
-  const retourPath = from === 'today' ? '/' : (planningDate ? '/planning' : '/')
-
-  const [planningData, setPlanningData] = useState(() => {
-    if (!planningDate) return null
-    try { return JSON.parse(localStorage.getItem(PLANNING_KEY(planningDate))) } catch { return null }
-  })
+  // Quitter le Mode Focus ramène toujours à Aujourd'hui
+  const retourPath = '/'
 
   const [tasks] = useState(() => {
-    if (planningData) {
-      return planningData.tachesPlanifiees
-        .filter(tp => !tp.done)
-        .map(tp => ({
-          tache:   { id: tp.tacheId,   titre: tp.titreTache,  done: false },
-          dossier: { id: tp.dossierId, titre: tp.titreDossier,
-                     organisme: tp.organisme ?? null, quadrant: tp.quadrant },
-          dureeMin: tp.dureeMin ?? null,
-        }))
-    }
     if (brainDumpTaches) return brainDumpTaches
     return dossiersAujourdhui.flatMap(d =>
       d.taches.filter(t => !t.done).map(t => ({ tache: t, dossier: d, dureeMin: null }))
@@ -96,7 +70,6 @@ export default function ModeFocus() {
   // 'idle' | 'exiting' | 'snap' | 'entering'
   const [animPhase, setAnimPhase] = useState('idle')
   const [bumpKey,   setBumpKey]   = useState(0)
-  const [showPlus,  setShowPlus]  = useState(false)
   const [showSheet, setShowSheet] = useState(false)
 
   const total   = tasks.length
@@ -108,15 +81,13 @@ export default function ModeFocus() {
       <EcranFin
         fait={fait}
         doneIds={doneIds}
-        planningData={planningData}
         navigate={navigate}
         retourPath={retourPath}
       />
     )
   }
 
-  const creneau  = planningData?.tachesPlanifiees.find(t => t.tacheId === current.tache.id) ?? null
-  const dureeMin = current.dureeMin ?? creneau?.dureeMin ?? null
+  const dureeMin = current.dureeMin ?? null
 
   // ── Fait ✓ ───────────────────────────────────────────────────────────────
   const handleFait = () => {
@@ -126,19 +97,6 @@ export default function ModeFocus() {
     // 1. Marquer la tâche comme faite dans le dossier Supabase
     if (current.dossier.id) {
       toggleTache(current.dossier.id, current.tache.id).catch(console.error)
-    }
-
-    // 2. Mettre à jour le cache planning en localStorage (évite la réapparition)
-    if (planningDate && planningData) {
-      const updatedPlanning = {
-        ...planningData,
-        tachesPlanifiees: planningData.tachesPlanifiees.map(tp =>
-          tp.tacheId === current.tache.id ? { ...tp, done: true } : tp
-        ),
-      }
-      localStorage.setItem(PLANNING_KEY(planningDate), JSON.stringify(updatedPlanning))
-      setPlanningData(updatedPlanning)
-      savePlanning(updatedPlanning, authUser?.id).catch(() => {})
     }
 
     // 3. Carte sort vers le haut (transition 300ms)
@@ -172,21 +130,6 @@ export default function ModeFocus() {
         setTimeout(() => setAnimPhase('idle'), 320)
       })
     })
-  }
-
-  // ── Plus de temps ────────────────────────────────────────────────────────
-  const handlePlusTemps = async (dureeSupp) => {
-    setShowPlus(false)
-    if (!planningData || !current) return
-    const updated = recalculerApresExtension(planningData.tachesPlanifiees, current.tache.id, dureeSupp)
-    const np      = { ...planningData, tachesPlanifiees: updated }
-    localStorage.setItem(PLANNING_KEY(planningDate), JSON.stringify(np))
-    setPlanningData(np)
-    try { await savePlanning(np, authUser?.id) } catch {}
-    try {
-      if (Notification.permission === 'granted')
-        new Notification('Planning ajusté', { body: 'Ton planning a été recalculé.', icon: '/favicon.svg' })
-    } catch {}
   }
 
   // Styles inline pilotant les transitions CSS — pas de keyframes
@@ -260,11 +203,6 @@ export default function ModeFocus() {
               <span className="focus-duree-lbl">estimé</span>
             </div>
           )}
-
-          {/* Créneau planning */}
-          {creneau && !dureeMin && (
-            <p className="focus-creneau">{creneau.heureDebut} – {creneau.heureFin}</p>
-          )}
         </div>
       </div>
 
@@ -287,42 +225,6 @@ export default function ModeFocus() {
           Fait ✓
         </button>
       </div>
-
-      {planningDate && (
-        <div className="focus-plus-wrap">
-          <button
-            className="focus-plus-btn"
-            onClick={() => setShowPlus(true)}
-            disabled={animating}
-          >
-            J'ai besoin de plus de temps
-          </button>
-        </div>
-      )}
-
-      {/* Modal plus de temps */}
-      {showPlus && (
-        <div className="overlay" onClick={() => setShowPlus(false)}>
-          <div className="sheet" onClick={e => e.stopPropagation()}>
-            <h3 style={{ fontSize: 18, fontWeight: 600, marginBottom: 6 }}>Temps supplémentaire</h3>
-            <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 16, lineHeight: 1.4 }}>
-              Les tâches suivantes seront décalées en conséquence.
-            </p>
-            <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-              {[15, 30, 45, 60].map(m => (
-                <button key={m} className="btn btn-secondary"
-                  style={{ flex: 1, padding: '12px 4px', fontSize: 15, fontWeight: 600 }}
-                  onClick={() => handlePlusTemps(m)}>
-                  +{m} min
-                </button>
-              ))}
-            </div>
-            <button className="btn btn-ghost btn-full btn-sm" onClick={() => setShowPlus(false)}>
-              Annuler
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* DossierSheet */}
       {showSheet && (
