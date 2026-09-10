@@ -136,7 +136,6 @@ et les fonctions de planification de `src/services/claude.js` (D6).
   section « Routines du jour » sur l'onglet Aujourd'hui
 - Journal automatique
 - Pipeline document sécurisé (pdfjs-dist, truncation 2000 chars)
-- WeeklyReviewModal (fonctionnel, hors charte visuelle)
 
 **Authentification actuelle :** mot de passe unique partagé (localStorage) → en cours de remplacement par Supabase Auth (phases 1-2-3)
 
