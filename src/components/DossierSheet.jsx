@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { useApp } from '../context/AppContext'
-import { getEtapesForDossier } from '../services/db'
+import { useDossier } from '../hooks/useDossier'
 import { haptic } from '../utils/haptic'
 
 // ── Constantes (miroir de DossierDetail) ──────────────────────────────────────
@@ -39,6 +38,7 @@ function formatDateShort(iso) {
   if (!iso) return ''
   return new Date(iso + 'T00:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })
 }
+function todayISO() { return new Date().toISOString().split('T')[0] }
 
 // ── Champ inline éditable ─────────────────────────────────────────────────────
 function InlineField({ value, onSave, multiline = false, placeholder = '', style = {} }) {
@@ -79,33 +79,47 @@ function InlineField({ value, onSave, multiline = false, placeholder = '', style
 
 // ── DossierSheet ──────────────────────────────────────────────────────────────
 export default function DossierSheet({ dossierId, onClose }) {
-  const { dossiers, mettreAJourDossier, toggleTache,
-          ajouterTache, supprimerTache } = useApp()
-  const dossier = dossiers.find(d => d.id === dossierId)
+  const { dossier, etapes, isClos, tachesDone, total, pct,
+          toggleTache, ajouterTache, supprimerTache, supprimerDossier,
+          ajouterEtapeManuelle, supprimerEtape, reloadEtapes, save } = useDossier(dossierId)
 
-  const [etapes,       setEtapes]       = useState([])
   const [activeTab,    setActiveTab]    = useState('taches')
   const [showEtatMenu, setShowEtatMenu] = useState(false)
+  const [showMenu,     setShowMenu]     = useState(false)
+  const [confirmType,  setConfirmType]  = useState(null) // null | 'cloturer' | 'supprimer'
 
   // Ajout tâche inline
   const [showAddTache, setShowAddTache] = useState(false)
   const [newTache,     setNewTache]     = useState('')
   const newTacheRef = useRef(null)
 
+  // Échéance inline
+  const [showEcheanceEdit, setShowEcheanceEdit] = useState(false)
+  const [echeance,         setEcheance]         = useState('')
+
+  // Noter ce qui s'est passé
+  const [showAddEtape,   setShowAddEtape]   = useState(false)
+  const [newEtapeDate,   setNewEtapeDate]   = useState('')
+  const [newEtapeTexte,  setNewEtapeTexte]  = useState('')
+  const [newEtapeStatut, setNewEtapeStatut] = useState('fait')
+
   // Swipe-to-dismiss
   const sheetRef  = useRef(null)
   const startY    = useRef(0)
   const dragDelta = useRef(0)
-
-  // ── Chargement étapes ──────────────────────────────────────────────────────
-  useEffect(() => {
-    if (!dossierId) return
-    getEtapesForDossier(dossierId).then(setEtapes).catch(() => {})
-  }, [dossierId])
+  const contentRef = useRef(null)
 
   useEffect(() => {
     if (showAddTache) newTacheRef.current?.focus()
   }, [showAddTache])
+
+  useEffect(() => {
+    if (dossier) setEcheance(dossier.echeance || '')
+  }, [dossier])
+
+  useEffect(() => {
+    if (confirmType && contentRef.current) contentRef.current.scrollTop = 0
+  }, [confirmType])
 
   // ── Fermeture animée ───────────────────────────────────────────────────────
   const handleClose = useCallback(() => {
@@ -141,20 +155,36 @@ export default function DossierSheet({ dossierId, onClose }) {
 
   if (!dossier) { handleClose(); return null }
 
-  const isClos     = dossier.etat === 'clos'
-  const tachesDone = dossier.taches.filter(t => t.done).length
-  const total      = dossier.taches.length
-  const pct        = total > 0 ? (tachesDone / total) * 100 : 0
-
-  const save = (updates) => mettreAJourDossier(dossierId, updates)
-    .then(() => getEtapesForDossier(dossierId).then(setEtapes))
-
   const handleAddTache = async (e) => {
     if (e) e.preventDefault()
     if (!newTache.trim()) { setShowAddTache(false); return }
     await ajouterTache(dossierId, newTache.trim())
     setNewTache('')
     newTacheRef.current?.focus()
+  }
+
+  const handleCloturer = async () => {
+    haptic('success'); await save({ etat: 'clos' }); setConfirmType(null)
+  }
+  const handleSupprimer = async () => {
+    haptic('medium'); await supprimerDossier(dossierId); handleClose()
+  }
+  const handleEcheanceSave = async () => {
+    await save({ echeance: echeance || null }); setShowEcheanceEdit(false)
+  }
+  const handleAddEtape = async () => {
+    if (!newEtapeTexte.trim()) return
+    haptic('light')
+    await ajouterEtapeManuelle(dossierId, {
+      date:   newEtapeDate || todayISO(),
+      texte:  newEtapeTexte.trim(),
+      statut: newEtapeStatut,
+    })
+    setShowAddEtape(false); setNewEtapeTexte(''); setNewEtapeDate(''); setNewEtapeStatut('fait')
+    await reloadEtapes()
+  }
+  const handleDeleteEtape = async (etapeId) => {
+    haptic('medium'); await supprimerEtape(etapeId); await reloadEtapes()
   }
 
   return (
@@ -179,7 +209,7 @@ export default function DossierSheet({ dossierId, onClose }) {
         {/* ── Header vert ── */}
         <div className="dss-header">
 
-          {/* Ligne 1 : badge statut + bouton ✕ */}
+          {/* Ligne 1 : badge statut + menu ··· + bouton ✕ */}
           <div className="dss-header-top">
             <div className="dss-badge-wrap">
               <button
@@ -208,13 +238,43 @@ export default function DossierSheet({ dossierId, onClose }) {
               )}
             </div>
 
-            <button className="dss-close-btn" onClick={handleClose} aria-label="Fermer">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                strokeWidth="2.5" strokeLinecap="round">
-                <line x1="18" y1="6" x2="6" y2="18"/>
-                <line x1="6" y1="6" x2="18" y2="18"/>
-              </svg>
-            </button>
+            <div className="dss-right-actions">
+              {!isClos && (
+                <div className="dss-menu-wrap">
+                  <button className="dss-menu-btn" onClick={() => setShowMenu(v => !v)}>···</button>
+                  {showMenu && (
+                    <>
+                      <div className="dss-menu-backdrop" onClick={() => setShowMenu(false)} />
+                      <div className="dss-menu-card">
+                        <button
+                          className="dss-menu-item"
+                          onClick={() => { setShowMenu(false); setConfirmType('cloturer') }}
+                          onTouchEnd={(e) => { e.preventDefault(); setShowMenu(false); setConfirmType('cloturer') }}
+                        >
+                          Clôturer ce dossier
+                        </button>
+                        <div className="dss-menu-divider" />
+                        <button
+                          className="dss-menu-item dss-menu-item-danger"
+                          onClick={() => { setShowMenu(false); setConfirmType('supprimer') }}
+                          onTouchEnd={(e) => { e.preventDefault(); setShowMenu(false); setConfirmType('supprimer') }}
+                        >
+                          Supprimer définitivement
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+
+              <button className="dss-close-btn" onClick={handleClose} aria-label="Fermer">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                  strokeWidth="2.5" strokeLinecap="round">
+                  <line x1="18" y1="6" x2="6" y2="18"/>
+                  <line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+              </button>
+            </div>
           </div>
 
           {/* Titre + organisme */}
@@ -242,7 +302,38 @@ export default function DossierSheet({ dossierId, onClose }) {
         </div>
 
         {/* ── Contenu défilable ── */}
-        <div className="dss-content">
+        <div className="dss-content" ref={contentRef}>
+
+          {/* Confirmations inline (clôturer / supprimer) */}
+          {confirmType === 'cloturer' && (
+            <div className="dss-body" style={{ paddingBottom: 0 }}>
+              <div className="dss-confirm-inline">
+                <p>Clôturer ce dossier ? Il sera archivé.</p>
+                <div className="dss-confirm-btns">
+                  <button className="btn btn-ghost btn-sm" onClick={() => setConfirmType(null)}>Annuler</button>
+                  <button className="btn btn-primary btn-sm" onClick={handleCloturer} onTouchEnd={(e) => { e.preventDefault(); handleCloturer() }}>Confirmer</button>
+                </div>
+              </div>
+            </div>
+          )}
+          {confirmType === 'supprimer' && (
+            <div className="dss-body" style={{ paddingBottom: 0 }}>
+              <div className="dss-confirm-inline dss-confirm-danger">
+                <p>Supprimer définitivement ? Action irréversible.</p>
+                <div className="dss-confirm-btns">
+                  <button className="btn btn-ghost btn-sm" onClick={() => setConfirmType(null)}>Annuler</button>
+                  <button
+                    className="btn btn-sm"
+                    style={{ background: '#C4623A', color: '#fff' }}
+                    onClick={handleSupprimer}
+                    onTouchEnd={(e) => { e.preventDefault(); handleSupprimer() }}
+                  >
+                    Supprimer
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* ══ ONGLET TÂCHES ══ */}
           {activeTab === 'taches' && (
@@ -364,10 +455,33 @@ export default function DossierSheet({ dossierId, onClose }) {
                     </div>
                   )}
 
-                  {dossier.echeance && (
-                    <div className="dss-info-row">
-                      <span className="dss-info-key">Échéance</span>
-                      <span className="dss-info-val">{formatDate(dossier.echeance)}</span>
+                  <div className="dss-info-row">
+                    <span className="dss-info-key">Échéance</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1 }}>
+                      <span className="dss-info-val">
+                        {dossier.echeance
+                          ? formatDate(dossier.echeance)
+                          : <span style={{ color: '#A09080' }}>Aucune</span>
+                        }
+                      </span>
+                      {!isClos && (
+                        <button className="dss-info-edit-btn" onClick={() => setShowEcheanceEdit(v => !v)}>
+                          {dossier.echeance ? 'Modifier' : 'Ajouter'}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {showEcheanceEdit && (
+                    <div className="dss-ech-edit">
+                      <input
+                        type="date"
+                        className="input"
+                        value={echeance}
+                        onChange={e => setEcheance(e.target.value)}
+                      />
+                      <button className="btn btn-primary btn-sm" onClick={handleEcheanceSave}>OK</button>
+                      <button className="btn btn-ghost btn-sm" onClick={() => { setEcheance(dossier.echeance || ''); setShowEcheanceEdit(false) }}>Annuler</button>
                     </div>
                   )}
 
@@ -388,11 +502,12 @@ export default function DossierSheet({ dossierId, onClose }) {
               </div>
 
               {/* Ce qui s'est passé */}
-              {etapes.length > 0 && (
-                <div className="dss-section">
-                  <div className="dss-vline dss-vline-sand" />
-                  <div className="dss-section-body">
-                    <span className="dss-section-label">Ce qui s'est passé</span>
+              <div className="dss-section">
+                <div className="dss-vline dss-vline-sand" />
+                <div className="dss-section-body">
+                  <span className="dss-section-label">Ce qui s'est passé</span>
+
+                  {etapes.length > 0 && (
                     <div className="dss-timeline">
                       {etapes.map((etape, idx) => {
                         const sc = STATUTS_NOTER.find(s => s.key === etape.statut)
@@ -414,13 +529,58 @@ export default function DossierSheet({ dossierId, onClose }) {
                               </div>
                               <p className="dss-etape-texte">{etape.texte}</p>
                             </div>
+                            {!isClos && etape.source === 'manuel' && (
+                              <button className="dss-tache-del" onClick={() => handleDeleteEtape(etape.id)} aria-label="Supprimer">×</button>
+                            )}
                           </div>
                         )
                       })}
                     </div>
-                  </div>
+                  )}
+
+                  {/* Formulaire inline Noter */}
+                  {!isClos && showAddEtape && (
+                    <div className="dss-noter-form">
+                      <textarea
+                        className="dss-noter-textarea"
+                        placeholder="Décrivez ce qui s'est passé… (lettre envoyée, réponse reçue…)"
+                        value={newEtapeTexte}
+                        onChange={e => setNewEtapeTexte(e.target.value)}
+                        rows={3}
+                        autoFocus
+                      />
+                      <div className="dss-statut-row">
+                        {STATUTS_NOTER.map(s => (
+                          <button
+                            key={s.key}
+                            className={`dss-statut-pill${newEtapeStatut === s.key ? ' dss-statut-active' : ''}`}
+                            onClick={() => setNewEtapeStatut(s.key)}
+                            type="button"
+                          >
+                            <span className="dss-statut-dot" style={{ background: s.color }} />
+                            {s.label}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="dss-noter-actions">
+                        <button className="dss-noter-cancel" onClick={() => { setShowAddEtape(false); setNewEtapeTexte('') }}>Annuler</button>
+                        <button className="dss-noter-save" disabled={!newEtapeTexte.trim()} onClick={handleAddEtape}>Enregistrer</button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Bouton Noter en pointillés */}
+                  {!isClos && !showAddEtape && (
+                    <button
+                      className="dss-add-btn"
+                      style={{ marginTop: etapes.length > 0 ? 10 : 4 }}
+                      onClick={() => { setNewEtapeDate(todayISO()); setShowAddEtape(true) }}
+                    >
+                      + Noter ce qui s'est passé
+                    </button>
+                  )}
                 </div>
-              )}
+              </div>
             </div>
           )}
 
@@ -482,6 +642,7 @@ const DSS_CSS = `
     margin-bottom: 10px;
   }
   .dss-badge-wrap { position: relative; }
+  .dss-right-actions { display: flex; align-items: center; gap: 6px; }
   .dss-close-btn {
     width: 30px; height: 30px; border-radius: 50%;
     border: none; background: rgba(255,255,255,0.12); color: rgba(255,255,255,0.8);
@@ -497,6 +658,41 @@ const DSS_CSS = `
     font-size: 13px; color: rgba(255,255,255,0.55);
     margin-bottom: 14px; line-height: 1.4;
   }
+
+  /* ── Menu ··· ──────────────────────────────────────────────────────────── */
+  .dss-menu-wrap { position: relative; }
+  .dss-menu-btn {
+    border: none; background: rgba(255,255,255,0.12); color: rgba(255,255,255,0.8);
+    border-radius: 8px; padding: 4px 10px; font-size: 18px; cursor: pointer;
+    font-family: inherit; letter-spacing: 1px; line-height: 1;
+    transition: background 0.15s;
+  }
+  .dss-menu-btn:active { background: rgba(255,255,255,0.22); }
+  .dss-menu-card {
+    position: absolute; top: calc(100% + 8px); right: 0; z-index: 50;
+    background: #fff; border-radius: 12px;
+    box-shadow: 0 6px 28px rgba(0,0,0,0.15);
+    min-width: 220px; overflow: hidden;
+    border: 1px solid #DDD8CE;
+  }
+  .dss-menu-item {
+    display: block; width: 100%; padding: 14px 18px;
+    text-align: left; border: none; background: none;
+    font-size: 15px; font-family: inherit; cursor: pointer; color: #2A1F14;
+    transition: background 0.12s;
+  }
+  .dss-menu-item:active { background: #F7F5F0; }
+  .dss-menu-item-danger { color: #C4623A; }
+  .dss-menu-divider { height: 1px; background: #F0EBE3; margin: 0 12px; }
+
+  /* ── Confirmations inline ──────────────────────────────────────────────── */
+  .dss-confirm-inline {
+    background: #fff; border: 1px solid #DDD8CE; border-radius: 12px;
+    padding: 14px; margin-bottom: 18px;
+  }
+  .dss-confirm-danger { border-color: #C4623A; }
+  .dss-confirm-inline p { font-size: 13px; color: #2A1F14; margin: 0 0 12px; line-height: 1.5; }
+  .dss-confirm-btns { display: flex; gap: 8px; justify-content: flex-end; }
 
   /* ── Status dropdown ───────────────────────────────────────────────────── */
   .dss-menu-backdrop { position: fixed; inset: 0; z-index: 9; }
@@ -634,6 +830,18 @@ const DSS_CSS = `
     flex-shrink: 0; width: 74px;
   }
   .dss-info-val { font-size: 14px; color: #2A1F14; flex: 1; }
+  .dss-info-edit-btn {
+    border: none; background: none; color: #A09080; font-size: 12px;
+    font-family: inherit; cursor: pointer; padding: 0;
+    text-decoration: underline; text-decoration-color: #DDD8CE;
+    flex-shrink: 0; transition: color 0.15s;
+  }
+  .dss-info-edit-btn:active { color: #2A1F14; }
+  .dss-ech-edit {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 0 4px;
+  }
+  .dss-ech-edit input { flex: 1; }
 
   /* État pills */
   .dss-etat-pill {
@@ -672,4 +880,47 @@ const DSS_CSS = `
     padding: 1px 6px; border-radius: 20px; font-style: italic;
   }
   .dss-etape-texte { font-size: 13px; color: #2A1F14; line-height: 1.45; margin: 0; }
+
+  /* ── Formulaire Noter ────────────────────────────────────────────────────── */
+  .dss-noter-form {
+    background: #fff; border: 1px solid #DDD8CE; border-radius: 12px;
+    padding: 14px; margin-top: 4px; margin-bottom: 4px;
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  .dss-noter-textarea {
+    width: 100%; border: 1.5px solid #DDD8CE; border-radius: 8px;
+    padding: 10px 12px; font-size: 14px; font-family: inherit;
+    color: #2A1F14; background: #F7F5F0; resize: none; outline: none;
+    line-height: 1.5; transition: border-color 0.15s;
+  }
+  .dss-noter-textarea:focus { border-color: #1C3829; }
+  .dss-noter-textarea::placeholder { color: #C0B8A8; }
+  .dss-statut-row { display: flex; gap: 6px; flex-wrap: wrap; }
+  .dss-statut-pill {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 5px 12px; border-radius: 20px;
+    border: 1.5px solid #DDD8CE; background: transparent;
+    font-size: 12px; font-weight: 500; color: #A09080;
+    cursor: pointer; font-family: inherit; transition: all 0.15s;
+    flex-shrink: 0;
+  }
+  .dss-statut-pill:active { opacity: 0.8; }
+  .dss-statut-active { border-color: #2A1F14; color: #2A1F14; background: #F7F5F0; }
+  .dss-statut-dot {
+    width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
+  }
+  .dss-noter-actions { display: flex; gap: 8px; justify-content: flex-end; }
+  .dss-noter-cancel {
+    border: none; background: none; font-size: 13px; color: #A09080;
+    cursor: pointer; font-family: inherit; padding: 6px 10px;
+    transition: color 0.15s;
+  }
+  .dss-noter-cancel:active { color: #2A1F14; }
+  .dss-noter-save {
+    background: #1C3829; color: #fff; border: none; border-radius: 8px;
+    padding: 8px 18px; font-size: 13px; font-weight: 600; font-family: inherit;
+    cursor: pointer; transition: background 0.15s;
+  }
+  .dss-noter-save:disabled { opacity: 0.4; cursor: default; }
+  .dss-noter-save:not(:disabled):active { background: #152e1f; }
 `
