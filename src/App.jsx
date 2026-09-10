@@ -15,6 +15,7 @@ import Journal from './pages/Journal'
 import Reglages from './pages/Reglages'
 import ModeFocus from './pages/ModeFocus'
 import Planning from './pages/Planning'
+import Routines from './pages/Routines'
 import Admin from './pages/Admin'
 
 function todayISO() { return new Date().toISOString().split('T')[0] }
@@ -107,6 +108,7 @@ function AuthenticatedApp() {
           <Route path="/journal"      element={<Journal />} />
           <Route path="/reglages"     element={<Reglages />} />
           <Route path="/planning"     element={<Planning />} />
+          <Route path="/routines"     element={<Routines />} />
           <Route path="/focus"        element={<ModeFocus />} />
           <Route path="/admin"        element={<Admin />} />
         </Routes>

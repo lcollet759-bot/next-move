@@ -361,6 +361,17 @@ export async function getRoutines(userId) {
   return (data ?? []).map(fromRoutineRow)
 }
 
+// Toutes les routines, actives ET désactivées — utilisé par l'écran Routines
+export async function getToutesRoutines(userId) {
+  const { data, error } = await supabase
+    .from('routines')
+    .select('*')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: true })
+  raise(error, 'getToutesRoutines')
+  return (data ?? []).map(fromRoutineRow)
+}
+
 export async function saveRoutine(routine, userId) {
   const row = { ...toRoutineRow(routine), user_id: userId }
   const { error } = await supabase
