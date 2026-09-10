@@ -9,7 +9,7 @@ import * as pdfjsLib from 'pdfjs-dist'
 import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker
 
-const MODES = ['Dicter', 'Écrire', 'Document', 'Brain dump']
+const MODES = ['Écrire', 'Document', 'Brain dump']
 
 function calcQuadrant(u, i) {
   if (u && i)   return 1
@@ -97,7 +97,6 @@ const IconBubble = () => (
 )
 
 const MODE_CONFIG = [
-  { id: 'Dicter',     label: 'Dicter',   icon: <IconMic /> },
   { id: 'Écrire',     label: 'Écrire',   icon: <IconPencil /> },
   { id: 'Document',   label: 'Document', icon: <IconFile /> },
   { id: 'Brain dump', label: 'Brain',    icon: <IconBubble /> },
@@ -395,7 +394,7 @@ export default function Capturer() {
 
   const canAnalyse = !loading &&
     (mode === 'Brain dump'                  ? !!transcript.trim() : true) &&
-    (mode === 'Écrire' || mode === 'Dicter' ? !!texte.trim()      : true) &&
+    (mode === 'Écrire' ? !!texte.trim() : true) &&
     (mode === 'Document'                    ? !!(docBase64 || pdfText) : true)
 
   return (
@@ -427,37 +426,6 @@ export default function Capturer() {
       </header>
 
       <div className="section">
-
-        {/* ── DICTER ── */}
-        {mode === 'Dicter' && (
-          <div className="cap-panel">
-            <div className="cap-dicter-center">
-              <div className={`cap-mic-ring${!isListening ? ' cap-mic-ring-idle' : ''}`}>
-                <button
-                  className={`cap-mic-btn${isListening ? ' cap-mic-listening' : ''}`}
-                  onClick={toggleDicter}
-                  aria-label={isListening ? 'Arrêter la dictée' : 'Commencer la dictée'}
-                >
-                  <MicBigSvg />
-                </button>
-              </div>
-              {!isListening && !texte && (
-                <p className="cap-mic-cta">Appuie et parle</p>
-              )}
-              <p className="cap-dicter-hint">
-                {isListening
-                  ? "J'écoute… Appuyez à nouveau pour arrêter."
-                  : null}
-              </p>
-            </div>
-            {texte && (
-              <div className="cap-dicter-result">
-                <p className="cap-dicter-text">{texte}</p>
-                <button className="btn btn-ghost btn-sm" style={{ alignSelf: 'flex-end' }} onClick={() => setTexte('')}>Effacer</button>
-              </div>
-            )}
-          </div>
-        )}
 
         {/* ── ÉCRIRE ── */}
         {mode === 'Écrire' && (
@@ -671,88 +639,10 @@ function CAP_STYLES() {
         width: 100%;
       }
 
-      /* ── Dicter ── */
-      .cap-dicter-center {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        gap: 22px;
-        padding: 36px 0 12px;
-        width: 100%;
-      }
-      .cap-mic-ring {
-        width: 106px;
-        height: 106px;
-        border-radius: 50%;
-        background: #E8F0EA;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        flex-shrink: 0;
-      }
-      .cap-mic-btn {
-        width: 80px;
-        height: 80px;
-        border-radius: 50%;
-        background: #1C3829;
-        border: none;
-        color: #fff;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        cursor: pointer;
-        transition: background 0.15s, transform 0.1s;
-        box-shadow: 0 4px 16px rgba(28,56,41,0.25);
-      }
-      .cap-mic-btn:active { transform: scale(0.93); }
-      .cap-mic-btn.cap-mic-listening {
-        background: #C4623A;
-        animation: cap-pulse 1.3s ease-in-out infinite;
-      }
+      /* Pulse micro actif — utilisé par Brain dump (.cap-brain-mic-active) */
       @keyframes cap-pulse {
         0%, 100% { box-shadow: 0 0 0 0 rgba(196,98,58,0.45); }
         50%       { box-shadow: 0 0 0 16px rgba(196,98,58,0); }
-      }
-      /* Anneau pulse subtle quand micro inactif — invite à appuyer */
-      .cap-mic-ring-idle {
-        animation: cap-ring-idle 2.4s ease-in-out infinite;
-      }
-      @keyframes cap-ring-idle {
-        0%, 100% { box-shadow: 0 0 0 0 rgba(28,56,41,0); }
-        50%       { box-shadow: 0 0 0 10px rgba(28,56,41,0.10); }
-      }
-      /* Label "Appuie et parle" */
-      .cap-mic-cta {
-        font-size: 15px;
-        font-weight: 600;
-        color: #1C3829;
-        letter-spacing: -0.2px;
-        text-align: center;
-        margin: 0;
-      }
-      .cap-dicter-hint {
-        font-size: 14px;
-        color: var(--text-muted);
-        text-align: center;
-        line-height: 1.55;
-        max-width: 220px;
-        min-height: 40px;
-      }
-      .cap-dicter-result {
-        width: 100%;
-        background: #fff;
-        border: 1px solid var(--border);
-        border-radius: var(--radius);
-        padding: 14px;
-        display: flex;
-        flex-direction: column;
-        gap: 10px;
-      }
-      .cap-dicter-text {
-        font-size: 14px;
-        color: var(--text);
-        line-height: 1.65;
-        margin: 0;
       }
 
       /* ── Écrire ── */
