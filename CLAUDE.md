@@ -48,7 +48,8 @@ Runtime cible : Android Chrome.
 
 ## RÈGLES TECHNIQUES ABSOLUES
 
-1. **`onConflict` pour la table `plannings` : toujours `'date'`, jamais `'id'`**
+1. ~~**`onConflict` pour la table `plannings` : toujours `'date'`, jamais `'id'`**~~ — sans objet : le code n'accède plus
+   à `plannings` depuis le retrait de Planning (Chantier 2, D6b). La table existe encore en base, inutilisée.
 2. **Ne jamais utiliser `position: fixed` dans un composant imbriqué** → stacking context cassé
 3. **RLS Supabase** : activée sur toutes les tables depuis la Phase 1 multi-comptes — ne pas désactiver
 4. **Worker pdfjs** : chargé localement via `?url` Vite — ne jamais pointer vers CDN ou blob externe
@@ -72,7 +73,8 @@ Ne jamais modifier le cœur existant sans raison explicite :
 
 - `dossiers` — dossiers avec tâches (JSON), statut, quadrant Eisenhower
 - `etapes` — historique des étapes par dossier
-- `plannings` — planning journalier
+- ~~`plannings` — planning journalier~~ — sans objet : table encore présente en base mais plus utilisée par le code
+  depuis le retrait de Planning (Chantier 2, D6b)
 - `routines` — tâches récurrentes (daily/weekly/monthly)
 - `journal` — historique automatique de toutes les actions
 - `users` — profils utilisateurs (email, prénom, role, cle_api_anthropic, actif)
