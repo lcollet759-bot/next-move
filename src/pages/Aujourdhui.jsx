@@ -3,7 +3,10 @@ import { useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 import { analyserBrainDump, genererMessageMatinal } from '../services/claude'
 import { getRoutines } from '../services/db'
-import { APP_TIME_ZONE, todayISO, todayFR, todayCalendarParts } from '../utils/date'
+import {
+  APP_TIME_ZONE, todayISO, todayFR, todayCalendarParts,
+  isTaskInActionQueue, isTaskTimedToday,
+} from '../utils/date'
 
 const RESUME_KEY = (d) => `nm-resume-${d}`
 
@@ -102,7 +105,7 @@ export default function Aujourdhui() {
         .sort((a, b) => a.quadrant - b.quadrant)
         .flatMap(d =>
           d.taches.filter(t => !t.done).map(t => ({
-            tache:   { id: t.id, titre: t.titre, done: false },
+            tache:   { ...t, done: false },
             dossier: { id: d.id, titre: d.titre, organisme: d.organisme ?? null, quadrant: d.quadrant },
           }))
         )
@@ -137,9 +140,37 @@ export default function Aujourdhui() {
   const closeBD = () => { if (!bdLoading) { setShowBD(false); setBdTexte(''); setBdError('') } }
 
   // ── Données état actif ────────────────────────────────────────────────────
-  const toutesLesTaches = dossiersAujourdhui.flatMap(d =>
-    d.taches.filter(t => !t.done).map(t => ({ tache: t, dossier: d }))
+  const today = todayISO()
+
+  // File d'action : 7 premiers dossiers actionnables ayant au moins une tâche actionnable
+  // (liste dédiée : un dossier en attente / bloqué / 100 % futur ne prend pas de place)
+  const dossiersPourActions = (dossiers || [])
+    .filter(d =>
+      d.etat === 'actionnable' &&
+      (d.taches || []).some(t => isTaskInActionQueue(t, today))
+    )
+    .sort((a, b) =>
+      a.quadrant - b.quadrant ||
+      (b.updatedAt || '').localeCompare(a.updatedAt || '')
+    )
+    .slice(0, 7)
+
+  const toutesLesTaches = dossiersPourActions.flatMap(d =>
+    (d.taches || [])
+      .filter(t => isTaskInActionQueue(t, today))
+      .map(t => ({ tache: t, dossier: d }))
   )
+
+  // Planifié aujourd'hui : tous les dossiers actionnables, sans limite de 7, tri par heure
+  const tachesPlanifieesAujourdhui = (dossiers || [])
+    .filter(d => d.etat === 'actionnable')
+    .flatMap(d =>
+      (d.taches || [])
+        .filter(t => isTaskTimedToday(t, today))
+        .map(t => ({ tache: t, dossier: d }))
+    )
+    .sort((a, b) => a.tache.heurePlanifiee.localeCompare(b.tache.heurePlanifiee))
+
   const indexEffectif  = Math.min(indexTache, Math.max(0, toutesLesTaches.length - 1))
   const tacheNow       = toutesLesTaches[indexEffectif] || null
   const tachesNext     = toutesLesTaches.slice(indexEffectif + 1, indexEffectif + 4)
@@ -256,6 +287,29 @@ export default function Aujourdhui() {
 
           /* ══ ÉTAT ACTIF ═════════════════════════════════════════════ */
           <>
+            {/* ── Planifié aujourd'hui ─────────────────────────────── */}
+            {tachesPlanifieesAujourdhui.length > 0 && (
+              <div className="aj-section">
+                <div className="aj-vline aj-vline-planned" />
+                <div className="aj-section-body">
+                  <span className="aj-slabel aj-slabel-planned">Planifié aujourd’hui</span>
+                  {tachesPlanifieesAujourdhui.map(({ tache, dossier }) => (
+                    <div
+                      key={`${dossier.id}-${tache.id}`}
+                      className="aj-planned-row"
+                      onClick={() => navigate(`/dossiers/${dossier.id}`)}
+                    >
+                      <span className="aj-planned-heure">{tache.heurePlanifiee}</span>
+                      <div className="aj-planned-texte">
+                        <span className="aj-planned-titre">{tache.titre}</span>
+                        <span className="aj-planned-dossier">{dossier.titre}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* ── Maintenant ───────────────────────────────────────── */}
             {tacheNow && (
               <div className="aj-section">
@@ -818,6 +872,45 @@ const ajCSS = `
     font-size: 11px;
     color: #A09080;
     flex-shrink: 0;
+  }
+
+  /* Planifié aujourd'hui */
+  .aj-vline-planned  { background: rgba(28,56,41,0.45); }
+  .aj-slabel-planned { color: #1C3829; }
+  .aj-planned-row {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    padding: 6px 0;
+    border-bottom: 1px solid #F0EBE3;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .aj-planned-row:last-child { border-bottom: none; }
+  .aj-planned-row:active { opacity: 0.6; }
+  .aj-planned-heure {
+    font-size: 13px;
+    font-weight: 700;
+    color: #1C3829;
+    font-variant-numeric: tabular-nums;
+    min-width: 40px;
+    flex-shrink: 0;
+  }
+  .aj-planned-texte {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .aj-planned-titre {
+    font-size: 14px;
+    color: #2A1F14;
+    line-height: 1.4;
+  }
+  .aj-planned-dossier {
+    font-size: 12px;
+    color: #A09080;
+    line-height: 1.4;
   }
 
   /* En attente */

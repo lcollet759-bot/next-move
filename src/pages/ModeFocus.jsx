@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 import { haptic } from '../utils/haptic'
+import { isTaskInActionQueue } from '../utils/date'
 import DossierSheet from '../components/DossierSheet'
 
 // ── Utilitaires ───────────────────────────────────────────────────────────────
@@ -61,9 +62,14 @@ export default function ModeFocus() {
   const [tasks] = useState(() => {
     if (brainDumpTaches) return brainDumpTaches
     if (passedTaches) return passedTaches
-    return dossiersAujourdhui.flatMap(d =>
-      d.taches.filter(t => !t.done).map(t => ({ tache: t, dossier: d, dureeMin: null }))
-    )
+    // Fallback sans liste explicite : dossiers actionnables, tâches de la file d'action uniquement
+    return dossiersAujourdhui
+      .filter(d => d.etat === 'actionnable')
+      .flatMap(d =>
+        (d.taches || [])
+          .filter(t => isTaskInActionQueue(t))
+          .map(t => ({ tache: t, dossier: d, dureeMin: null }))
+      )
   })
 
   const [index,     setIndex]     = useState(0)
