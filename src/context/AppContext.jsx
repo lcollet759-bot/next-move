@@ -3,6 +3,7 @@ import { v4 as uuid } from 'uuid'
 import * as db from '../services/db'
 import { getCurrentUser, getUserProfile, onAuthStateChange, signOut } from '../services/db'
 import { setReminder, removeReminder, checkReminders, requestPermission, notifyEscalade } from '../services/notifications'
+import { todayISO } from '../utils/date'
 
 const AppContext = createContext(null)
 
@@ -23,10 +24,6 @@ function withTimeout(promise, ms = 3000) {
 }
 
 const estTimeout = (err) => err?.message?.startsWith('Timeout après')
-
-function todayISO() {
-  return new Date().toISOString().split('T')[0]
-}
 
 // Mappe un état dossier vers le statut d'étape correspondant
 const ETAT_TO_ETAPE_STATUT = {

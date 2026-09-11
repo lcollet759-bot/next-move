@@ -3,8 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 import { analyserBrainDump, genererMessageMatinal } from '../services/claude'
 import { getRoutines } from '../services/db'
+import { APP_TIME_ZONE, todayISO, todayFR, todayCalendarParts } from '../utils/date'
 
-function todayISO() { return new Date().toISOString().split('T')[0] }
 const RESUME_KEY = (d) => `nm-resume-${d}`
 
 function calcQuadrant(u, i) {
@@ -14,12 +14,8 @@ function calcQuadrant(u, i) {
   return 4
 }
 
-function todayFR() {
-  return new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })
-}
-
 function routinesDuJour(routines) {
-  const now = new Date(); const dow = now.getDay(); const dom = now.getDate()
+  const { dayOfWeek: dow, day: dom } = todayCalendarParts()
   return routines.filter(r => {
     if (r.recurrence === 'daily')   return true
     if (r.recurrence === 'weekly')  return r.jourSemaine === dow
@@ -126,7 +122,7 @@ export default function Aujourdhui() {
     try {
       const titre = lignes.length === 1
         ? (lignes[0].length > 100 ? lignes[0].slice(0, 100) + '…' : lignes[0])
-        : `Notes rapides — ${new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}`
+        : `Notes rapides — ${new Date().toLocaleDateString('fr-FR', { timeZone: APP_TIME_ZONE, day: 'numeric', month: 'short' })}`
       const dossier = await creerDossier({ titre, taches: lignes, origine: 'vocal' })
       setBdTexte('')
       setShowBD(false)

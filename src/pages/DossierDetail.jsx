@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useDossier } from '../hooks/useDossier'
 import EtatBadge from '../components/EtatBadge'
 import { haptic } from '../utils/haptic'
+import { todayISO } from '../utils/date'
 
 // ── Constantes ────────────────────────────────────────────────────────────────
 const ETATS = [
@@ -36,8 +37,6 @@ const STATUTS_NOTER = [
 const STATUT_LABELS = { fait: 'Fait', en_attente: 'En attente', bloque: 'Bloqué' }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-function todayISO() { return new Date().toISOString().split('T')[0] }
-
 function formatDate(iso) {
   if (!iso) return null
   return new Date(iso + 'T00:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })

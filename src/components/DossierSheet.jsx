@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useDossier } from '../hooks/useDossier'
 import { haptic } from '../utils/haptic'
+import { todayISO } from '../utils/date'
 
 // ── Constantes (miroir de DossierDetail) ──────────────────────────────────────
 const ETATS = [
@@ -38,7 +39,6 @@ function formatDateShort(iso) {
   if (!iso) return ''
   return new Date(iso + 'T00:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })
 }
-function todayISO() { return new Date().toISOString().split('T')[0] }
 
 // ── Champ inline éditable ─────────────────────────────────────────────────────
 function InlineField({ value, onSave, multiline = false, placeholder = '', style = {} }) {
