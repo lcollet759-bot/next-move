@@ -60,7 +60,7 @@ const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/
 
 // Format 'YYYY-MM-DD' ET date réellement existante (rejette 2026-02-31, 2026-13-01…)
-function isValidISODate(value) {
+export function isValidISODate(value) {
   if (typeof value !== 'string' || !ISO_DATE_RE.test(value)) {
     return false
   }
@@ -75,6 +75,11 @@ function isValidISODate(value) {
   )
 }
 
+// Heure 'HH:MM' sur 24 h (rejette '14h', '24:00', '9:00'…)
+export function isValidISOTime(value) {
+  return typeof value === 'string' && TIME_RE.test(value)
+}
+
 function taskDateISO(task) {
   return isValidISODate(task?.datePlanifiee)
     ? task.datePlanifiee
@@ -82,7 +87,7 @@ function taskDateISO(task) {
 }
 
 function taskTime(task) {
-  return typeof task?.heurePlanifiee === 'string' && TIME_RE.test(task.heurePlanifiee)
+  return isValidISOTime(task?.heurePlanifiee)
     ? task.heurePlanifiee
     : null
 }

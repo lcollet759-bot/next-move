@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useDossier } from '../hooks/useDossier'
 import EtatBadge from '../components/EtatBadge'
 import { haptic } from '../utils/haptic'
-import { todayISO } from '../utils/date'
+import { todayISO, isValidISODate, isValidISOTime } from '../utils/date'
 
 // ── Constantes ────────────────────────────────────────────────────────────────
 const ETATS = [
@@ -44,6 +44,16 @@ function formatDate(iso) {
 function formatDateShort(iso) {
   if (!iso) return ''
   return new Date(iso + 'T00:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })
+}
+
+// Planification d'une tâche → « 11 sept. 2026 » ou « 11 sept. 2026 · 14:00 » ; null si date invalide.
+// Date civile : construite et formatée en UTC pour ne jamais décaler d'un jour.
+const planDateFormatter = new Intl.DateTimeFormat('fr-FR', { timeZone: 'UTC', day: 'numeric', month: 'short', year: 'numeric' })
+function formatPlanification(tache) {
+  if (!isValidISODate(tache?.datePlanifiee)) return null
+  const [year, month, day] = tache.datePlanifiee.split('-').map(Number)
+  const date = planDateFormatter.format(new Date(Date.UTC(year, month - 1, day)))
+  return isValidISOTime(tache.heurePlanifiee) ? `${date} · ${tache.heurePlanifiee}` : date
 }
 
 function daysUntil(iso) {
@@ -118,6 +128,11 @@ export default function DossierDetail() {
   const newTacheRef   = useRef(null)
   const tacheInputRef = useRef(null)
 
+  // Planification d'une tâche (sheet)
+  const [planningTacheId, setPlanningTacheId] = useState(null)
+  const [planningDate,    setPlanningDate]    = useState('')
+  const [planningTime,    setPlanningTime]    = useState('')
+
   // Étapes
   const [showAddEtape,   setShowAddEtape]   = useState(false)
   const [newEtapeDate,   setNewEtapeDate]   = useState('')
@@ -177,6 +192,48 @@ export default function DossierDetail() {
       await mettreAJourDossier(id, { taches: dossier.taches.map(t => t.id === editingTacheId ? { ...t, titre: tacheDraft.trim() } : t) })
     }
     setEditingTacheId(null); setTacheDraft('')
+  }
+
+  // ── Planification d'une tâche ─────────────────────────────────────────────
+  const planningTache = planningTacheId ? dossier.taches.find(t => t.id === planningTacheId) : null
+  const planningValid =
+    (!planningDate || isValidISODate(planningDate)) &&
+    (!planningTime || (Boolean(planningDate) && isValidISOTime(planningTime)))
+
+  const openPlanning = (tache) => {
+    if (isClos || tache.done) return
+    // Une donnée invalide n'est jamais reproduite dans l'éditeur
+    const date = isValidISODate(tache.datePlanifiee) ? tache.datePlanifiee : ''
+    setPlanningDate(date)
+    setPlanningTime(date && isValidISOTime(tache.heurePlanifiee) ? tache.heurePlanifiee : '')
+    setPlanningTacheId(tache.id)
+  }
+
+  const closePlanning = () => { setPlanningTacheId(null); setPlanningDate(''); setPlanningTime('') }
+
+  // L'heure n'a de sens qu'avec une date : effacer la date efface aussi l'heure
+  const handlePlanningDateChange = (value) => {
+    setPlanningDate(value)
+    if (!value) setPlanningTime('')
+  }
+
+  // Ne réécrit que les deux champs de planification de la tâche visée (id, titre, done… préservés)
+  const savePlanification = (tacheId, datePlanifiee, heurePlanifiee) =>
+    mettreAJourDossier(id, { taches: dossier.taches.map(t => t.id === tacheId ? { ...t, datePlanifiee, heurePlanifiee } : t) })
+
+  const handlePlanningSave = async () => {
+    if (!planningTache || isClos || planningTache.done || !planningValid) return
+    const datePlanifiee  = planningDate || null
+    const heurePlanifiee = planningDate && planningTime ? planningTime : null
+    closePlanning()
+    if ((planningTache.datePlanifiee ?? null) === datePlanifiee && (planningTache.heurePlanifiee ?? null) === heurePlanifiee) return
+    await savePlanification(planningTache.id, datePlanifiee, heurePlanifiee)
+  }
+
+  const handlePlanningRemove = async () => {
+    if (!planningTache || isClos || planningTache.done) return
+    closePlanning()
+    await savePlanification(planningTache.id, null, null)
   }
 
   const handleAddEtape = async () => {
@@ -287,7 +344,7 @@ export default function DossierDetail() {
               <p className="dd-empty-taches">Aucune tâche — commencez par en ajouter une.</p>
             )}
             {dossier.taches.map(tache => (
-              <div key={tache.id} className="dd-tache-row">
+              <div key={tache.id} className="dd-tache-row dd-tache-row-task">
                 {/* Case à cocher carrée arrondie */}
                 <button
                   className={`dd-check${tache.done ? ' dd-check-done' : ''}`}
@@ -301,25 +358,40 @@ export default function DossierDetail() {
                   )}
                 </button>
 
-                {/* Titre éditable inline */}
-                {editingTacheId === tache.id ? (
-                  <input
-                    ref={tacheInputRef}
-                    className="dd-tache-edit"
-                    value={tacheDraft}
-                    onChange={e => setTacheDraft(e.target.value)}
-                    onBlur={handleTacheEditSave}
-                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleTacheEditSave() } if (e.key === 'Escape') setEditingTacheId(null) }}
-                  />
-                ) : (
-                  <span
-                    className={`dd-tache-titre${tache.done ? ' dd-tache-done' : ''}`}
-                    onClick={() => !isClos && !tache.done && (setEditingTacheId(tache.id), setTacheDraft(tache.titre))}
-                    style={{ cursor: !isClos && !tache.done ? 'text' : 'default' }}
-                  >
-                    {tache.titre}
-                  </span>
-                )}
+                <div className="dd-tache-main">
+                  {/* Titre éditable inline */}
+                  {editingTacheId === tache.id ? (
+                    <input
+                      ref={tacheInputRef}
+                      className="dd-tache-edit"
+                      value={tacheDraft}
+                      onChange={e => setTacheDraft(e.target.value)}
+                      onBlur={handleTacheEditSave}
+                      onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleTacheEditSave() } if (e.key === 'Escape') setEditingTacheId(null) }}
+                    />
+                  ) : (
+                    <span
+                      className={`dd-tache-titre${tache.done ? ' dd-tache-done' : ''}`}
+                      onClick={() => !isClos && !tache.done && (setEditingTacheId(tache.id), setTacheDraft(tache.titre))}
+                      style={{ cursor: !isClos && !tache.done ? 'text' : 'default' }}
+                    >
+                      {tache.titre}
+                    </span>
+                  )}
+
+                  {/* Planification : éditable si tâche ouverte, sinon lecture seule (si existante) */}
+                  {!isClos && !tache.done ? (
+                    <button
+                      type="button"
+                      className={`dd-tache-plan${formatPlanification(tache) ? ' dd-tache-plan-set' : ''}`}
+                      onClick={e => { e.stopPropagation(); openPlanning(tache) }}
+                    >
+                      {formatPlanification(tache) || '+ Planifier'}
+                    </button>
+                  ) : formatPlanification(tache) && (
+                    <span className="dd-tache-plan dd-tache-plan-ro">{formatPlanification(tache)}</span>
+                  )}
+                </div>
 
                 {!isClos && (
                   <button className="dd-tache-del" onClick={() => supprimerTache(id, tache.id)} aria-label="Supprimer">×</button>
@@ -605,6 +677,44 @@ export default function DossierDetail() {
         </div>
       )}
 
+      {/* Sheet : planification d'une tâche */}
+      {planningTache && (
+        <div className="overlay" onClick={closePlanning}>
+          <div className="sheet" onClick={e => e.stopPropagation()}>
+            <h3 style={{ fontSize: 18, fontWeight: 600, marginBottom: 4 }}>Planifier la tâche</h3>
+            <p className="dd-plan-tache">{planningTache.titre}</p>
+
+            <label className="dd-plan-label" htmlFor="dd-plan-date">Date</label>
+            <input
+              id="dd-plan-date"
+              type="date"
+              className="input dd-plan-input"
+              value={planningDate}
+              onChange={e => handlePlanningDateChange(e.target.value)}
+            />
+
+            <label className="dd-plan-label" htmlFor="dd-plan-time">Heure — facultative</label>
+            <input
+              id="dd-plan-time"
+              type="time"
+              className="input dd-plan-input"
+              value={planningTime}
+              disabled={!planningDate}
+              onChange={e => setPlanningTime(e.target.value)}
+            />
+
+            <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
+              <button className="btn btn-ghost" style={{ flex: 1 }} onClick={closePlanning}>Annuler</button>
+              <button className="btn btn-primary" style={{ flex: 2 }} disabled={!planningValid} onClick={handlePlanningSave}>Enregistrer</button>
+            </div>
+
+            {isValidISODate(planningTache.datePlanifiee) && (
+              <button className="dd-plan-remove" onClick={handlePlanningRemove}>Supprimer la planification</button>
+            )}
+          </div>
+        </div>
+      )}
+
       <style>{CSS}</style>
     </div>
   )
@@ -778,6 +888,45 @@ const CSS = `
     min-width: 28px; min-height: 28px; display: flex; align-items: center; justify-content: center;
   }
   .dd-tache-del:active { opacity: 1; }
+
+  /* Ligne de tâche : titre + planification sous le titre */
+  .dd-tache-row-task { align-items: flex-start; }
+  .dd-tache-row-task .dd-check { margin-top: -1px; }
+  .dd-tache-row-task .dd-tache-del { margin-top: -4px; }
+  .dd-tache-main {
+    flex: 1; display: flex; flex-direction: column; gap: 2px;
+  }
+  .dd-tache-plan {
+    align-self: flex-start;
+    border: none; background: none;
+    padding: 4px 12px 8px 0; margin: -2px 0 -8px;
+    font-size: 12px; line-height: 1.3; color: #B5A898;
+    font-family: inherit; text-align: left; cursor: pointer;
+    transition: color 0.15s;
+  }
+  .dd-tache-plan:active { color: #1C3829; }
+  .dd-tache-plan-set { color: #7A6A5A; font-weight: 500; }
+  .dd-tache-plan-ro, .dd-tache-plan-ro:active { color: #A09080; cursor: default; }
+
+  /* Sheet planification */
+  .dd-plan-tache {
+    font-size: 13px; color: #A09080; line-height: 1.4;
+    margin: 0 0 16px; overflow-wrap: anywhere;
+  }
+  .dd-plan-label {
+    display: block; font-size: 12px; font-weight: 600; color: #A09080;
+    margin-bottom: 6px;
+  }
+  .dd-plan-input { min-height: 46px; margin-bottom: 14px; }
+  .dd-plan-input::-webkit-date-and-time-value { text-align: left; }
+  .dd-plan-input:disabled { opacity: 0.45; }
+  .dd-plan-remove {
+    display: block; margin: 14px auto 0; padding: 6px 10px;
+    border: none; background: none; color: #A09080;
+    font-size: 13px; font-family: inherit; cursor: pointer;
+    text-decoration: underline; text-decoration-color: #DDD8CE;
+  }
+  .dd-plan-remove:active { color: #2A1F14; }
 
   .dd-add-input {
     flex: 1; border: none; outline: none; font-size: 14px;
