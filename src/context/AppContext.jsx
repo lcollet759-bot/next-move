@@ -62,6 +62,31 @@ function validateDossier(data) {
   return titre
 }
 
+// Normalise une tâche (string ou objet) : id garanti, titre nettoyé, done défini.
+// Les propriétés inconnues de l'objet sont conservées.
+function normaliserTache(tache) {
+  const raw = typeof tache === 'string'
+    ? { titre: tache }
+    : (tache || {})
+
+  const titre = typeof raw.titre === 'string'
+    ? raw.titre.trim()
+    : ''
+
+  const id = typeof raw.id === 'string' && raw.id.trim()
+    ? raw.id
+    : uuid()
+
+  return {
+    ...raw,
+    id,
+    titre,
+    done: typeof raw.done === 'boolean'
+      ? raw.done
+      : false,
+  }
+}
+
 // ── Reducer ───────────────────────────────────────────────────────────────────
 
 const init = {
@@ -265,11 +290,9 @@ export function AppProvider({ children }) {
       description:     (data.description || '').trim(),
       echeance:        data.echeance || null,
       raisonAujourdhui: (data.raisonPriorite || '').trim(),
-      taches:          (data.taches || []).map(t =>
-        typeof t === 'string'
-          ? { id: uuid(), titre: t.trim(), done: false }
-          : { ...t, titre: t.titre?.trim() || '' }
-      ).filter(t => t.titre),
+      taches:          (data.taches || [])
+        .map(normaliserTache)
+        .filter(t => t.titre),
       createdAt:       new Date().toISOString(),
       updatedAt:       new Date().toISOString(),
       lastActionAt:    new Date().toISOString(),
