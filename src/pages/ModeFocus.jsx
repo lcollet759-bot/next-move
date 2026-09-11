@@ -52,12 +52,15 @@ export default function ModeFocus() {
   const location = useLocation()
 
   const brainDumpTaches = location.state?.brainDumpTaches || null
+  // Liste explicite transmise par l'appelant (ex. Aujourd'hui) — [] est une liste valide
+  const passedTaches = Array.isArray(location.state?.taches) ? location.state.taches : null
 
   // Quitter le Mode Focus ramène toujours à Aujourd'hui
   const retourPath = '/'
 
   const [tasks] = useState(() => {
     if (brainDumpTaches) return brainDumpTaches
+    if (passedTaches) return passedTaches
     return dossiersAujourdhui.flatMap(d =>
       d.taches.filter(t => !t.done).map(t => ({ tache: t, dossier: d, dureeMin: null }))
     )
