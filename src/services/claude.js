@@ -82,8 +82,12 @@ const REGLES_DATES = `Règles pour "echeance" :
 - Ne jamais confondre la date d'émission avec l'échéance`
 
 // ── Analyse une capture texte/vocale → dossier structuré ──────────────────
-export async function analyserCapture(texte) {
-  if (texte.length > 8000) throw new Error('Texte trop long (maximum 8 000 caractères).')
+// options.maxChars : plafond du texte reçu — 8 000 par défaut (limite historique du mode Écrire)
+export async function analyserCapture(texte, options = {}) {
+  const maxChars = options.maxChars ?? 8000
+  if (texte.length > maxChars) {
+    throw new Error(`Texte trop long (maximum ${String(maxChars).replace(/\B(?=(\d{3})+(?!\d))/g, ' ')} caractères).`)
+  }
 
   const system = `${CONTEXTE_SUISSE}
 

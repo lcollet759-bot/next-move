@@ -68,8 +68,8 @@ async function extractPDFText(file) {
   }
 }
 
-// Même plafond que analyserCapture() : au-delà, on refuse plutôt que de tronquer.
-const MARKDOWN_MAX_CHARS = 8000
+// Plafond du contenu Markdown lui-même (hors enveloppe) : au-delà, on refuse plutôt que de tronquer.
+const MARKDOWN_MAX_CHARS = 50000
 
 // Détection par extension d'abord : selon l'appareil, un .md arrive en text/markdown, text/plain ou sans MIME.
 function isMarkdownFile(file) {
@@ -255,12 +255,13 @@ export default function Capturer() {
           result = await analyserDocument(docBase64, docMime)
           console.log('[Document] Réponse reçue')
         } else if (mode === 'Document' && markdownText) {
-          const markdownPayload = buildMarkdownPayload(docFile.name, markdownText)
-          if (markdownPayload.length > MARKDOWN_MAX_CHARS) {
-            throw new Error('Ce fichier Markdown est trop long pour être analysé en une fois.')
+          if (markdownText.length > MARKDOWN_MAX_CHARS) {
+            throw new Error('Ce fichier Markdown dépasse la limite de 50 000 caractères.')
           }
+          const markdownPayload = buildMarkdownPayload(docFile.name, markdownText)
           console.log('[Document] Analyse en cours...')
-          result = await analyserCapture(markdownPayload)
+          // Contenu déjà plafonné ci-dessus : l'enveloppe ne doit pas faire rejeter un fichier à la limite
+          result = await analyserCapture(markdownPayload, { maxChars: markdownPayload.length })
           console.log('[Document] Réponse reçue')
         } else if (mode === 'Document' && pdfText) {
           console.log('[Document] Analyse en cours...')
