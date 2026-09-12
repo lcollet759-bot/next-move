@@ -5,6 +5,7 @@ import { analyserCapture, analyserDocument, analyserBrainDump } from '../service
 import EtatBadge from '../components/EtatBadge'
 import QuadrantBadge from '../components/QuadrantBadge'
 import { haptic } from '../utils/haptic'
+import { isValidISODate, isValidISOTime } from '../utils/date'
 import * as pdfjsLib from 'pdfjs-dist'
 import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker
@@ -16,6 +17,22 @@ function calcQuadrant(u, i) {
   if (!u && i)  return 2
   if (u && !i)  return 3
   return 4
+}
+
+// Planification d'une tâche proposée → « lun. 15 sept. » ou « lun. 15 sept. · 10:00 » ; null si non planifiée.
+// Date civile : construite et formatée en UTC pour ne jamais décaler d'un jour.
+const planDateFormatter = new Intl.DateTimeFormat('fr-FR', { timeZone: 'UTC', weekday: 'short', day: 'numeric', month: 'short' })
+function formatPlanification(tache) {
+  if (typeof tache !== 'object' || !isValidISODate(tache?.datePlanifiee)) return null
+  const [year, month, day] = tache.datePlanifiee.split('-').map(Number)
+  const date = planDateFormatter.format(new Date(Date.UTC(year, month - 1, day)))
+  return isValidISOTime(tache.heurePlanifiee) ? `${date} · ${tache.heurePlanifiee}` : date
+}
+
+const tacheTitre = (t) => typeof t === 'string' ? t : t.titre
+function TachePlanif({ tache }) {
+  const planif = formatPlanification(tache)
+  return planif ? <span style={{ color: 'var(--text-muted)', fontSize: '0.85em' }}> — {planif}</span> : null
 }
 
 async function compressImage(file, maxWidth = 1200, quality = 0.82) {
@@ -261,12 +278,12 @@ export default function Capturer() {
           const markdownPayload = buildMarkdownPayload(docFile.name, markdownText)
           console.log('[Document] Analyse en cours...')
           // Contenu déjà plafonné ci-dessus : l'enveloppe ne doit pas faire rejeter un fichier à la limite
-          result = await analyserCapture(markdownPayload, { maxChars: markdownPayload.length })
+          result = await analyserCapture(markdownPayload, { maxChars: markdownPayload.length, sourceType: 'document' })
           console.log('[Document] Réponse reçue')
         } else if (mode === 'Document' && pdfText) {
           console.log('[Document] Analyse en cours...')
           const texteReduit = pdfText.substring(0, 2000)
-          result = await analyserCapture(`Voici le contenu d'un document :\n\n${texteReduit}\n\n[FIN DU DOCUMENT]\n\nAnalyse ce document et crée un dossier Next Move.`)
+          result = await analyserCapture(`Voici le contenu d'un document :\n\n${texteReduit}\n\n[FIN DU DOCUMENT]\n\nAnalyse ce document et crée un dossier Next Move.`, { sourceType: 'document' })
           console.log('[Document] Réponse reçue')
         } else {
           result = await analyserCapture(input)
@@ -347,7 +364,7 @@ export default function Capturer() {
                 <div style={{ borderTop: '1px solid var(--border)', paddingTop: 8 }}>
                   {d.taches.slice(0, 3).map((t, j) => (
                     <div key={j} style={{ fontSize: 12, color: 'var(--text-muted)', padding: '2px 0' }}>
-                      · {typeof t === 'string' ? t : t.titre}
+                      · {tacheTitre(t)}<TachePlanif tache={t} />
                     </div>
                   ))}
                   {d.taches.length > 3 && <div style={{ fontSize: 12, color: 'var(--text-muted)', paddingTop: 2 }}>+ {d.taches.length - 3} tâche{d.taches.length - 3 > 1 ? 's' : ''}</div>}
@@ -408,7 +425,7 @@ export default function Capturer() {
             {proposition.taches?.length > 0 && (
               <>
                 <label className="label">Tâches suggérées</label>
-                {proposition.taches.map((t, i) => <div key={i} className="prop-tache">· {typeof t === 'string' ? t : t.titre}</div>)}
+                {proposition.taches.map((t, i) => <div key={i} className="prop-tache">· {tacheTitre(t)}<TachePlanif tache={t} /></div>)}
               </>
             )}
             {proposition.raisonPriorite && (

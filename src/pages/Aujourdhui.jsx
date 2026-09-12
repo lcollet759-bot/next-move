@@ -101,15 +101,19 @@ export default function Aujourdhui() {
         ...d, origine: 'vocal', quadrant: calcQuadrant(d.urgence, d.importance),
       }))
       const created = await Promise.all(enrichis.map(d => creerDossier(d)))
+      // Focus ne reçoit que la file d'action : ni tâche future, ni tâche d'aujourd'hui avec heure
+      const referenceISO = todayISO()
       const brainDumpTaches = created
         .sort((a, b) => a.quadrant - b.quadrant)
         .flatMap(d =>
-          d.taches.filter(t => !t.done).map(t => ({
+          d.taches.filter(t => isTaskInActionQueue(t, referenceISO)).map(t => ({
             tache:   { ...t, done: false },
             dossier: { id: d.id, titre: d.titre, organisme: d.organisme ?? null, quadrant: d.quadrant },
           }))
         )
       setBdTexte('')
+      // Aucune tâche éligible : dossiers créés, on reste sur Aujourd'hui (comme « Créer » du Brain dump de Capturer)
+      if (brainDumpTaches.length === 0) { setShowBD(false); return }
       navigate('/focus', { state: { brainDumpTaches } })
     } catch (e) {
       setBdError(e.message || 'Erreur lors de l\'analyse.')
