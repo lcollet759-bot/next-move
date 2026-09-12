@@ -155,6 +155,15 @@ export default function DossierSheet({ dossierId, onClose }) {
 
   if (!dossier) { handleClose(); return null }
 
+  // Toutes les tâches faites sur un dossier à traiter : l'utilisateur choisit la suite (jamais automatique)
+  const showCompletionChoices =
+    !isClos && dossier.etat === 'actionnable' && total > 0 && tachesDone === total && !showAddTache
+
+  const handleAttenteRetour = () => {
+    haptic('light'); setShowEtatMenu(false); setShowMenu(false); setConfirmType(null)
+    save({ etat: 'attente_externe' })
+  }
+
   const handleAddTache = async (e) => {
     if (e) e.preventDefault()
     if (!newTache.trim()) { setShowAddTache(false); return }
@@ -367,6 +376,25 @@ export default function DossierSheet({ dossierId, onClose }) {
                 </div>
               )}
 
+              {/* Choix de fin : toutes les tâches sont faites */}
+              {showCompletionChoices && (
+                <div className="dss-done" role="group" aria-label="Toutes les tâches sont faites">
+                  <p className="dss-done-title">Toutes les tâches sont faites.</p>
+                  <p className="dss-done-sub">Que souhaitez-vous faire ?</p>
+                  <button type="button" className="dss-done-primary" onClick={() => setConfirmType('cloturer')}>
+                    Clôturer
+                  </button>
+                  <div className="dss-done-secondary">
+                    <button type="button" className="dss-done-btn" onClick={() => setShowAddTache(true)}>
+                      Ajouter une action
+                    </button>
+                    <button type="button" className="dss-done-btn" onClick={handleAttenteRetour}>
+                      J'attends un retour
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {/* Liste des tâches */}
               <div className="dss-taches-list">
                 {dossier.taches.length === 0 && !showAddTache && (
@@ -422,8 +450,8 @@ export default function DossierSheet({ dossierId, onClose }) {
                 )}
               </div>
 
-              {/* Bouton Ajouter en pointillés */}
-              {!isClos && !showAddTache && (
+              {/* Bouton Ajouter en pointillés (remplacé par « Ajouter une action » quand le choix de fin est affiché) */}
+              {!isClos && !showAddTache && !showCompletionChoices && (
                 <button className="dss-add-btn" onClick={() => setShowAddTache(true)}>
                   + Ajouter une tâche
                 </button>
@@ -769,6 +797,29 @@ const DSS_CSS = `
   .dss-prog-done  { font-weight: 700; color: #1C3829; }
   .dss-prog-sep   { color: #C0B8A8; }
   .dss-prog-total { color: #A09080; }
+
+  /* ── Choix de fin : toutes les tâches sont faites ───────────────────────── */
+  .dss-done {
+    background: #fff; border: 0.5px solid #DDD8CE; border-radius: 14px;
+    padding: 16px; margin-bottom: 16px;
+  }
+  .dss-done-title { font-size: 14px; font-weight: 600; color: #1C3829; line-height: 1.4; margin: 0 0 2px; }
+  .dss-done-sub   { font-size: 13px; color: #A09080; line-height: 1.4; margin: 0 0 14px; }
+  .dss-done-primary {
+    display: block; width: 100%; min-height: 48px; padding: 12px 16px;
+    background: #1C3829; color: #fff; border: none; border-radius: 10px;
+    font-size: 15px; font-weight: 700; font-family: inherit; cursor: pointer;
+    transition: background 0.15s;
+  }
+  .dss-done-primary:active { background: #152e1f; }
+  .dss-done-secondary { display: flex; gap: 8px; margin-top: 8px; }
+  .dss-done-btn {
+    flex: 1; min-height: 44px; padding: 10px 8px;
+    background: #F0EBE3; border: 0.5px solid #DDD8CE; border-radius: 10px;
+    color: #7A6A5A; font-size: 13px; font-weight: 600; font-family: inherit;
+    line-height: 1.25; cursor: pointer; transition: background 0.15s, color 0.15s;
+  }
+  .dss-done-btn:active { background: #E6DFD3; color: #2A1F14; }
 
   /* ── Tâches ─────────────────────────────────────────────────────────────── */
   .dss-taches-list { display: flex; flex-direction: column; }

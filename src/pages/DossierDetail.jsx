@@ -165,6 +165,10 @@ export default function DossierDetail() {
   const joursEch    = daysUntil(dossier.echeance)
   const echProche   = joursEch !== null && joursEch <= 7
 
+  // Toutes les tâches faites sur un dossier à traiter : l'utilisateur choisit la suite (jamais automatique)
+  const showCompletionChoices =
+    !isClos && dossier.etat === 'actionnable' && total > 0 && tachesDone === total && !showAddTache
+
   const handleEtatChange = async (etat) => { haptic('light'); await save({ etat }); setShowEtatSheet(false) }
   const handleClose      = async ()      => { haptic('success'); await save({ etat: 'clos' }); setShowConfirmClose(false); navigate('/dossiers') }
   const handleDelete     = async ()      => { haptic('medium'); await supprimerDossier(id); navigate('/dossiers') }
@@ -330,11 +334,22 @@ export default function DossierDetail() {
             </div>
           )}
 
-          {/* Suggestion clôture */}
-          {!isClos && total > 0 && tachesDone === total && (
-            <div className="dd-cloture-hint">
-              <span>Toutes les tâches sont faites !</span>
-              <button className="dd-cloture-hint-btn" onClick={() => setShowConfirmClose(true)} onTouchEnd={(e) => { e.preventDefault(); setShowConfirmClose(true) }}>Clôturer →</button>
+          {/* Choix de fin : toutes les tâches sont faites */}
+          {showCompletionChoices && (
+            <div className="dd-done" role="group" aria-label="Toutes les tâches sont faites">
+              <p className="dd-done-title">Toutes les tâches sont faites.</p>
+              <p className="dd-done-sub">Que souhaitez-vous faire ?</p>
+              <button type="button" className="dd-done-primary" onClick={() => setShowConfirmClose(true)}>
+                Clôturer
+              </button>
+              <div className="dd-done-secondary">
+                <button type="button" className="dd-done-btn" onClick={() => setShowAddTache(true)}>
+                  Ajouter une action
+                </button>
+                <button type="button" className="dd-done-btn" onClick={() => handleEtatChange('attente_externe')}>
+                  J'attends un retour
+                </button>
+              </div>
             </div>
           )}
 
@@ -416,8 +431,8 @@ export default function DossierDetail() {
             )}
           </div>
 
-          {/* Bouton Ajouter en pointillés */}
-          {!isClos && !showAddTache && (
+          {/* Bouton Ajouter en pointillés (remplacé par « Ajouter une action » quand le choix de fin est affiché) */}
+          {!isClos && !showAddTache && !showCompletionChoices && (
             <button className="dd-add-btn" onClick={() => setShowAddTache(true)} onTouchEnd={(e) => { e.preventDefault(); setShowAddTache(true) }}>
               + Ajouter une tâche
             </button>
@@ -840,17 +855,28 @@ const CSS = `
     cursor: pointer; align-self: flex-start;
   }
 
-  /* Suggestion clôture */
-  .dd-cloture-hint {
-    display: flex; align-items: center; justify-content: space-between;
-    background: #E8F0EA; border-radius: 10px; padding: 10px 14px;
-    margin-bottom: 14px; font-size: 13px; color: #1C3829; font-weight: 500;
+  /* Choix de fin : toutes les tâches sont faites */
+  .dd-done {
+    background: #fff; border: 0.5px solid #DDD8CE; border-radius: 14px;
+    padding: 16px; margin-bottom: 16px;
   }
-  .dd-cloture-hint-btn {
-    background: #1C3829; color: #fff; border: none; border-radius: 7px;
-    padding: 5px 12px; font-size: 12px; font-weight: 600; font-family: inherit;
-    cursor: pointer;
+  .dd-done-title { font-size: 14px; font-weight: 600; color: #1C3829; line-height: 1.4; margin: 0 0 2px; }
+  .dd-done-sub   { font-size: 13px; color: #A09080; line-height: 1.4; margin: 0 0 14px; }
+  .dd-done-primary {
+    display: block; width: 100%; min-height: 48px; padding: 12px 16px;
+    background: #1C3829; color: #fff; border: none; border-radius: 10px;
+    font-size: 15px; font-weight: 700; font-family: inherit; cursor: pointer;
+    transition: background 0.15s;
   }
+  .dd-done-primary:active { background: #152e1f; }
+  .dd-done-secondary { display: flex; gap: 8px; margin-top: 8px; }
+  .dd-done-btn {
+    flex: 1; min-height: 44px; padding: 10px 8px;
+    background: #F0EBE3; border: 0.5px solid #DDD8CE; border-radius: 10px;
+    color: #7A6A5A; font-size: 13px; font-weight: 600; font-family: inherit;
+    line-height: 1.25; cursor: pointer; transition: background 0.15s, color 0.15s;
+  }
+  .dd-done-btn:active { background: #E6DFD3; color: #2A1F14; }
 
   /* Liste des tâches */
   .dd-taches-list { display: flex; flex-direction: column; }
