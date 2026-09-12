@@ -68,6 +68,22 @@ async function extractPDFText(file) {
   }
 }
 
+// Même plafond que analyserCapture() : au-delà, on refuse plutôt que de tronquer.
+const MARKDOWN_MAX_CHARS = 8000
+
+// Détection par extension d'abord : selon l'appareil, un .md arrive en text/markdown, text/plain ou sans MIME.
+function isMarkdownFile(file) {
+  return file.name?.toLowerCase().endsWith('.md') || file.type === 'text/markdown'
+}
+
+// Payload réellement envoyé à analyserCapture() — Markdown brut, non modifié.
+function buildMarkdownPayload(fileName, content) {
+  return `Voici le contenu du fichier Markdown "${fileName}" :\n\n` +
+    content +
+    `\n\n[FIN DU DOCUMENT]\n\n` +
+    `Analyse ce document et crée un dossier Next Move.`
+}
+
 // Mode icons
 const IconMic = () => (
   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -143,6 +159,7 @@ export default function Capturer() {
   const [docBase64,  setDocBase64]  = useState(null)
   const [docMime,    setDocMime]    = useState('image/jpeg')
   const [pdfText,    setPdfText]    = useState(null)
+  const [markdownText, setMarkdownText] = useState(null)
   const cameraRef = useRef(null)
   const fileRef   = useRef(null)
 
@@ -191,7 +208,17 @@ export default function Capturer() {
   // ── Document ──────────────────────────────────────────────────────────────
   const handleFile = useCallback(async (file) => {
     if (!file) return
-    setError(''); setProposition(null); setDocFile(file)
+    setError(''); setProposition(null); setDocFile(file); setMarkdownText(null)
+    // Avant le choix image/PDF : un .md au MIME vide ne doit jamais atteindre compressImage()
+    if (isMarkdownFile(file)) {
+      setDocPreview(null); setDocBase64(null); setPdfText(null)
+      try {
+        const content = await file.text()
+        if (content.trim().length === 0) { setError('Ce fichier Markdown est vide.'); return }
+        setMarkdownText(content)
+      } catch { setError('Lecture du fichier impossible.') }
+      return
+    }
     const mime = file.type || 'image/jpeg'; setDocMime(mime)
     try {
       if (mime === 'application/pdf') {
@@ -227,6 +254,14 @@ export default function Capturer() {
           console.log('[Document] Analyse en cours...')
           result = await analyserDocument(docBase64, docMime)
           console.log('[Document] Réponse reçue')
+        } else if (mode === 'Document' && markdownText) {
+          const markdownPayload = buildMarkdownPayload(docFile.name, markdownText)
+          if (markdownPayload.length > MARKDOWN_MAX_CHARS) {
+            throw new Error('Ce fichier Markdown est trop long pour être analysé en une fois.')
+          }
+          console.log('[Document] Analyse en cours...')
+          result = await analyserCapture(markdownPayload)
+          console.log('[Document] Réponse reçue')
         } else if (mode === 'Document' && pdfText) {
           console.log('[Document] Analyse en cours...')
           const texteReduit = pdfText.substring(0, 2000)
@@ -240,7 +275,7 @@ export default function Capturer() {
       }
     } catch (e) { setError(e.message) }
     finally { setLoading(false) }
-  }, [mode, texte, transcript, docBase64, pdfText, docMime, apiKey])
+  }, [mode, texte, transcript, docBase64, pdfText, markdownText, docFile, docMime, apiKey])
 
   const confirmer = useCallback(async () => {
     if (!proposition) return
@@ -266,7 +301,7 @@ export default function Capturer() {
   const reset = () => {
     setProposition(null); setBrainDumpResult(null)
     setTexte(''); setTranscript('')
-    setDocFile(null); setDocPreview(null); setDocBase64(null); setPdfText(null); setError('')
+    setDocFile(null); setDocPreview(null); setDocBase64(null); setPdfText(null); setMarkdownText(null); setError('')
     if (isListening) stopListening()
   }
 
@@ -401,7 +436,7 @@ export default function Capturer() {
   const canAnalyse = !loading &&
     (mode === 'Brain dump'                  ? !!transcript.trim() : true) &&
     (mode === 'Écrire' ? !!texte.trim() : true) &&
-    (mode === 'Document'                    ? !!(docBase64 || pdfText) : true)
+    (mode === 'Document'                    ? !!(docBase64 || pdfText || markdownText) : true)
 
   return (
     <div className="page">
@@ -453,7 +488,7 @@ export default function Capturer() {
         {mode === 'Document' && (
           <div className="cap-panel">
             <input ref={cameraRef} type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={handleCameraChange} />
-            <input ref={fileRef}   type="file" accept="image/*,application/pdf" style={{ display: 'none' }} onChange={handleFileChange} />
+            <input ref={fileRef}   type="file" accept="image/*,application/pdf,.md,text/markdown" style={{ display: 'none' }} onChange={handleFileChange} />
             {docFile ? (
               <div className="doc-preview">
                 {docPreview
@@ -467,7 +502,7 @@ export default function Capturer() {
                       <span className="doc-filename">{docFile.name}</span>
                     </div>
                 }
-                <button className="btn btn-ghost btn-sm" onClick={() => { setDocFile(null); setDocPreview(null); setDocBase64(null); setPdfText(null); setError('') }}>Changer de document</button>
+                <button className="btn btn-ghost btn-sm" onClick={() => { setDocFile(null); setDocPreview(null); setDocBase64(null); setPdfText(null); setMarkdownText(null); setError('') }}>Changer de document</button>
               </div>
             ) : (
               <div className="doc-import-panel">
@@ -485,7 +520,7 @@ export default function Capturer() {
                     <polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
                   </svg>
                   <span>Importer un fichier</span>
-                  <span className="doc-btn-sub">Image ou PDF</span>
+                  <span className="doc-btn-sub">Image, PDF ou Markdown</span>
                 </button>
               </div>
             )}
