@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
-import { analyserCapture, analyserDocument, analyserBrainDump } from '../services/claude'
+import { analyserCapture, analyserDocument, analyserDocumentTexte, analyserBrainDump } from '../services/claude'
 import EtatBadge from '../components/EtatBadge'
 import QuadrantBadge from '../components/QuadrantBadge'
 import { haptic } from '../utils/haptic'
@@ -93,12 +93,12 @@ function isMarkdownFile(file) {
   return file.name?.toLowerCase().endsWith('.md') || file.type === 'text/markdown'
 }
 
-// Payload réellement envoyé à analyserCapture() — Markdown brut, non modifié.
+// Payload réellement envoyé à analyserDocumentTexte() — Markdown brut, non modifié.
 function buildMarkdownPayload(fileName, content) {
   return `Voici le contenu du fichier Markdown "${fileName}" :\n\n` +
     content +
     `\n\n[FIN DU DOCUMENT]\n\n` +
-    `Analyse ce document et crée un dossier Next Move.`
+    `Analyse ce document et crée le ou les dossiers Next Move.`
 }
 
 // Mode icons
@@ -266,10 +266,11 @@ export default function Capturer() {
         const dossiers = await analyserBrainDump(input)
         setBrainDumpResult(dossiers.map(d => ({ ...d, origine: 'vocal', quadrant: calcQuadrant(d.urgence, d.importance) })))
       } else {
-        let result
+        // Document → tableau de 1 à N dossiers ; Écrire → toujours un seul dossier
+        let dossiers
         if (mode === 'Document' && docBase64) {
           console.log('[Document] Analyse en cours...')
-          result = await analyserDocument(docBase64, docMime)
+          dossiers = await analyserDocument(docBase64, docMime)
           console.log('[Document] Réponse reçue')
         } else if (mode === 'Document' && markdownText) {
           if (markdownText.length > MARKDOWN_MAX_CHARS) {
@@ -278,18 +279,21 @@ export default function Capturer() {
           const markdownPayload = buildMarkdownPayload(docFile.name, markdownText)
           console.log('[Document] Analyse en cours...')
           // Contenu déjà plafonné ci-dessus : l'enveloppe ne doit pas faire rejeter un fichier à la limite
-          result = await analyserCapture(markdownPayload, { maxChars: markdownPayload.length, sourceType: 'document' })
+          dossiers = await analyserDocumentTexte(markdownPayload, { maxChars: markdownPayload.length })
           console.log('[Document] Réponse reçue')
         } else if (mode === 'Document' && pdfText) {
           console.log('[Document] Analyse en cours...')
           const texteReduit = pdfText.substring(0, 2000)
-          result = await analyserCapture(`Voici le contenu d'un document :\n\n${texteReduit}\n\n[FIN DU DOCUMENT]\n\nAnalyse ce document et crée un dossier Next Move.`, { sourceType: 'document' })
+          dossiers = await analyserDocumentTexte(`Voici le contenu d'un document :\n\n${texteReduit}\n\n[FIN DU DOCUMENT]\n\nAnalyse ce document et crée le ou les dossiers Next Move.`)
           console.log('[Document] Réponse reçue')
         } else {
-          result = await analyserCapture(input)
+          dossiers = [await analyserCapture(input)]
         }
         const origine = mode === 'Écrire' ? 'texte' : mode.toLowerCase()
-        setProposition({ ...result, origine, quadrant: calcQuadrant(result.urgence, result.importance) })
+        // Quadrant calculé pour chaque dossier ; 1 dossier → proposition simple éditable, 2+ → vue multi-dossiers
+        const propositions = dossiers.map(d => ({ ...d, origine, quadrant: calcQuadrant(d.urgence, d.importance) }))
+        if (propositions.length === 1) setProposition(propositions[0])
+        else setBrainDumpResult(propositions)
       }
     } catch (e) { setError(e.message) }
     finally { setLoading(false) }
@@ -325,7 +329,7 @@ export default function Capturer() {
 
   const changeMode = (m) => { setMode(m); reset() }
 
-  // ── Vue Brain dump results ────────────────────────────────────────────────
+  // ── Vue multi-dossiers (Brain dump, document multi-sujets) ────────────────
   if (brainDumpResult) {
     return (
       <div className="page">
