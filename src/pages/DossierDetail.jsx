@@ -4,6 +4,7 @@ import { useDossier } from '../hooks/useDossier'
 import EtatBadge from '../components/EtatBadge'
 import { haptic } from '../utils/haptic'
 import { todayISO, isValidISODate, isValidISOTime } from '../utils/date'
+import { TRIS, trierTaches } from '../utils/dossiersFiltres'
 
 // ── Constantes ────────────────────────────────────────────────────────────────
 const ETATS = [
@@ -132,6 +133,10 @@ export default function DossierDetail() {
   const [planningTacheId, setPlanningTacheId] = useState(null)
   const [planningDate,    setPlanningDate]    = useState('')
   const [planningTime,    setPlanningTime]    = useState('')
+
+  // Tri des tâches : affichage seulement, rien n'est sauvegardé
+  const [triTaches,     setTriTaches]     = useState('actuel')
+  const [showTriTaches, setShowTriTaches] = useState(false)
 
   // Étapes
   const [showAddEtape,   setShowAddEtape]   = useState(false)
@@ -319,9 +324,24 @@ export default function DossierDetail() {
                 <div className="dd-prog-fill" style={{ width: `${pct}%` }} />
               </div>
               <div className="dd-prog-counter">
-                <span className="dd-prog-done">{tachesDone}</span>
-                <span className="dd-prog-sep"> / </span>
-                <span className="dd-prog-total">{total}</span>
+                {total > 1 && (
+                  <button
+                    type="button"
+                    className={`dd-tri-btn${triTaches !== 'actuel' ? ' dd-tri-btn-on' : ''}`}
+                    onClick={() => setShowTriTaches(true)}
+                    aria-label="Trier les tâches"
+                  >
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <path d="M7 4v16M3 16l4 4 4-4M17 20V4M13 8l4-4 4 4"/>
+                    </svg>
+                    {TRIS.find(t => t.key === triTaches)?.court}
+                  </button>
+                )}
+                <span className="dd-prog-nums">
+                  <span className="dd-prog-done">{tachesDone}</span>
+                  <span className="dd-prog-sep"> / </span>
+                  <span className="dd-prog-total">{total}</span>
+                </span>
               </div>
             </div>
           )}
@@ -358,7 +378,7 @@ export default function DossierDetail() {
             {dossier.taches.length === 0 && !showAddTache && (
               <p className="dd-empty-taches">Aucune tâche — commencez par en ajouter une.</p>
             )}
-            {dossier.taches.map(tache => (
+            {trierTaches(dossier.taches, triTaches).map(tache => (
               <div key={tache.id} className="dd-tache-row dd-tache-row-task">
                 {/* Case à cocher carrée arrondie */}
                 <button
@@ -692,6 +712,31 @@ export default function DossierDetail() {
         </div>
       )}
 
+      {/* Sheet : tri des tâches (affichage seulement) */}
+      {showTriTaches && (
+        <div className="overlay" onClick={() => setShowTriTaches(false)}>
+          <div className="sheet" onClick={e => e.stopPropagation()}>
+            <h3 style={{ fontSize: 18, fontWeight: 600, marginBottom: 4 }}>Trier les tâches</h3>
+            <p className="dd-tri-note">Hors « Ordre actuel », les tâches terminées passent en fin de liste.</p>
+            <div role="radiogroup" aria-label="Trier les tâches">
+              {TRIS.map(t => (
+                <button
+                  key={t.key}
+                  type="button"
+                  role="radio"
+                  aria-checked={triTaches === t.key}
+                  className={`dd-tri-opt${triTaches === t.key ? ' dd-tri-opt-on' : ''}`}
+                  onClick={() => { setTriTaches(t.key); setShowTriTaches(false) }}
+                >
+                  <span className="dd-tri-radio" />
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Sheet : planification d'une tâche */}
       {planningTache && (
         <div className="overlay" onClick={closePlanning}>
@@ -960,6 +1005,26 @@ const CSS = `
   }
   .dd-add-input::placeholder { color: #C0B8A8; }
   .dd-empty-taches { font-size: 14px; color: #A09080; padding: 16px 0; text-align: center; }
+
+  /* Tri des tâches */
+  .dd-prog-counter { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+  .dd-tri-btn {
+    margin-right: auto; display: inline-flex; align-items: center; gap: 5px;
+    border: none; background: none; padding: 4px 0;
+    font-size: 12px; font-weight: 500; color: #A09080; font-family: inherit; cursor: pointer;
+  }
+  .dd-tri-btn:active { color: #2A1F14; }
+  .dd-tri-btn-on { color: #1C3829; font-weight: 600; }
+  .dd-tri-note { font-size: 13px; color: #A09080; margin-bottom: 12px; }
+  .dd-tri-opt {
+    display: flex; align-items: center; gap: 10px; width: 100%;
+    padding: 12px 2px; border: none; border-bottom: 1px solid #F0EBE3; background: none;
+    text-align: left; font-size: 14px; font-family: inherit; color: #2A1F14; cursor: pointer;
+  }
+  .dd-tri-opt:last-child { border-bottom: none; }
+  .dd-tri-radio { width: 16px; height: 16px; border-radius: 50%; border: 1.5px solid #DDD8CE; flex-shrink: 0; box-sizing: border-box; }
+  .dd-tri-opt-on { font-weight: 600; }
+  .dd-tri-opt-on .dd-tri-radio { border: 5px solid #1C3829; }
 
   /* Bouton Ajouter en pointillés */
   .dd-add-btn {

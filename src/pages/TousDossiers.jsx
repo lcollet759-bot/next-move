@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
+import { FILTRES_TEMPS, TRIS, dossierCorrespond, dossierCorrespondTemps, trierDossiers } from '../utils/dossiersFiltres'
 
 // ── Filtres ───────────────────────────────────────────────────────────────────
 const FILTRES = [
@@ -58,6 +59,16 @@ function DossierGridCard({ dossier, onClick }) {
   )
 }
 
+// ── Icône filtres / tris (curseurs) ──────────────────────────────────────────
+function IconeFiltres() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+      <line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/>
+      <circle cx="9" cy="6" r="2.2" fill="#1C3829"/><circle cx="15" cy="12" r="2.2" fill="#1C3829"/><circle cx="8" cy="18" r="2.2" fill="#1C3829"/>
+    </svg>
+  )
+}
+
 // ── Skeleton ──────────────────────────────────────────────────────────────────
 function SkeletonGrid() {
   return (
@@ -82,6 +93,9 @@ export default function TousDossiers() {
   })
   const [recherche, setRecherche] = useState('')
   const [limit,     setLimit]     = useState(PAGE_SIZE)
+  const [filtreTemps, setFiltreTemps] = useState(null)      // période (FILTRES_TEMPS) ou null
+  const [tri,         setTri]         = useState('actuel')  // TRIS
+  const [showFiltres, setShowFiltres] = useState(false)
 
   // Réagir aux changements de searchParams (navigation client-side sans remontage)
   useEffect(() => {
@@ -89,7 +103,7 @@ export default function TousDossiers() {
     if (FILTRES.some(x => x.key === f)) setFiltre(f)
   }, [searchParams])
 
-  const dossiersFiltres = useMemo(() => {
+  const { dossiersFiltres, comptesTemps } = useMemo(() => {
     let list = [...dossiers]
 
     // Filtre principal
@@ -98,18 +112,15 @@ export default function TousDossiers() {
     else if (filtre === 'attente') list = list.filter(d => d.etat === 'attente_externe')
     else if (filtre === 'bloque')  list = list.filter(d => d.etat === 'bloque')
 
-    // Recherche
-    if (recherche.trim()) {
-      const q = recherche.toLowerCase()
-      list = list.filter(d =>
-        d.titre.toLowerCase().includes(q) ||
-        (d.organisme || '').toLowerCase().includes(q) ||
-        (d.description || '').toLowerCase().includes(q)
-      )
-    }
+    // Recherche : titre, organisme, description, raison et titres des tâches — sans casse ni accents
+    list = list.filter(d => dossierCorrespond(d, recherche))
 
-    return list.sort((a, b) => a.quadrant - b.quadrant || b.updatedAt.localeCompare(a.updatedAt))
-  }, [dossiers, filtre, recherche])
+    // Période (tâches actives uniquement) ; compteurs affichés dans le panneau
+    const comptesTemps = Object.fromEntries(FILTRES_TEMPS.map(f => [f.key, list.filter(d => dossierCorrespondTemps(d, f.key)).length]))
+    if (filtreTemps) list = list.filter(d => dossierCorrespondTemps(d, filtreTemps))
+
+    return { dossiersFiltres: trierDossiers(list, tri), comptesTemps }
+  }, [dossiers, filtre, recherche, filtreTemps, tri])
 
   const counts = useMemo(() => ({
     tous:    dossiers.filter(d => d.etat !== 'clos').length,
@@ -120,6 +131,11 @@ export default function TousDossiers() {
 
   const handleFiltreChange    = (key) => { setFiltre(key); setLimit(PAGE_SIZE) }
   const handleRechercheChange = (e)   => { setRecherche(e.target.value); setLimit(PAGE_SIZE) }
+  const choisirTemps = (key) => { setFiltreTemps(key); setLimit(PAGE_SIZE) }
+  const choisirTri   = (key) => { setTri(key); setLimit(PAGE_SIZE) }
+  // Réinitialiser : statut Tous, aucune période, recherche vide, ordre actuel
+  const reinitialiser = () => { setFiltre('tous'); setFiltreTemps(null); setRecherche(''); setTri('actuel'); setLimit(PAGE_SIZE); setShowFiltres(false) }
+  const criteresActifs = filtreTemps !== null || tri !== 'actuel'
 
   const visible = dossiersFiltres.slice(0, limit)
   const hasMore = dossiersFiltres.length > limit
@@ -140,11 +156,14 @@ export default function TousDossiers() {
               </button>
             </div>
           </div>
-          <div className="td-search-wrap">
-            <svg className="td-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="2" strokeLinecap="round">
-              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-            </svg>
-            <input className="td-search" placeholder="Rechercher…" disabled />
+          <div className="td-search-row">
+            <div className="td-search-wrap">
+              <svg className="td-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="2" strokeLinecap="round">
+                <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+              </svg>
+              <input className="td-search" placeholder="Rechercher…" disabled />
+            </div>
+            <button className="td-btn-filtres" disabled aria-label="Filtrer et trier"><IconeFiltres /></button>
           </div>
           <div className="td-pills">
             {FILTRES.map(f => (
@@ -178,20 +197,30 @@ export default function TousDossiers() {
           </div>
         </div>
 
-        {/* Recherche */}
-        <div className="td-search-wrap">
-          <svg className="td-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="2" strokeLinecap="round">
-            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-          </svg>
-          <input
-            className="td-search"
-            placeholder="Rechercher…"
-            value={recherche}
-            onChange={handleRechercheChange}
-          />
-          {recherche && (
-            <button className="td-search-clear" onClick={() => { setRecherche(''); setLimit(PAGE_SIZE) }}>✕</button>
-          )}
+        {/* Recherche + bouton filtres / tris */}
+        <div className="td-search-row">
+          <div className="td-search-wrap">
+            <svg className="td-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="2" strokeLinecap="round">
+              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+            <input
+              className="td-search"
+              placeholder="Rechercher…"
+              value={recherche}
+              onChange={handleRechercheChange}
+            />
+            {recherche && (
+              <button className="td-search-clear" onClick={() => { setRecherche(''); setLimit(PAGE_SIZE) }}>✕</button>
+            )}
+          </div>
+          <button
+            className={`td-btn-filtres${criteresActifs ? ' td-btn-filtres-on' : ''}`}
+            onClick={() => setShowFiltres(true)}
+            aria-label="Filtrer et trier"
+          >
+            <IconeFiltres />
+            {criteresActifs && <span className="td-btn-filtres-dot" />}
+          </button>
         </div>
 
         {/* Filtres pills */}
@@ -220,8 +249,11 @@ export default function TousDossiers() {
             </svg>
             <p className="empty-title">Aucun dossier</p>
             <p className="empty-text">
-              {recherche ? 'Aucun résultat pour cette recherche.' : 'Capturez votre premier dossier.'}
+              {recherche || filtreTemps ? 'Aucun résultat pour ces critères.' : 'Capturez votre premier dossier.'}
             </p>
+            {(recherche || filtreTemps) && (
+              <button className="btn btn-ghost btn-sm td-empty-reset" onClick={reinitialiser}>Réinitialiser</button>
+            )}
           </div>
         ) : (
           <>
@@ -249,6 +281,46 @@ export default function TousDossiers() {
           </>
         )}
       </div>
+
+      {/* ── Panneau filtres / tris (niveau page, hors du header sticky) ───── */}
+      {showFiltres && (
+        <div className="overlay" onClick={() => setShowFiltres(false)}>
+          <div className="sheet td-sheet" onClick={e => e.stopPropagation()}>
+            <div className="td-sheet-head">
+              <h3 className="td-sheet-title">Filtrer et trier</h3>
+              <button className="td-sheet-close" onClick={() => setShowFiltres(false)} aria-label="Fermer">✕</button>
+            </div>
+
+            <p className="td-sheet-label">Période</p>
+            <div className="td-sheet-options">
+              <button className={`td-opt${filtreTemps === null ? ' td-opt-on' : ''}`} onClick={() => choisirTemps(null)}>Toutes</button>
+              {FILTRES_TEMPS.map(f => (
+                <button key={f.key} className={`td-opt${filtreTemps === f.key ? ' td-opt-on' : ''}`} onClick={() => choisirTemps(f.key)}>
+                  {f.label}
+                  <span className="td-opt-count">{comptesTemps[f.key]}</span>
+                </button>
+              ))}
+            </div>
+
+            <p className="td-sheet-label">Trier par</p>
+            <div className="td-sheet-tris" role="radiogroup" aria-label="Trier par">
+              {TRIS.map(t => (
+                <button key={t.key} role="radio" aria-checked={tri === t.key} className={`td-tri${tri === t.key ? ' td-tri-on' : ''}`} onClick={() => choisirTri(t.key)}>
+                  <span className="td-tri-radio" />
+                  {t.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="td-sheet-actions">
+              <button className="btn btn-ghost" onClick={reinitialiser}>Réinitialiser</button>
+              <button className="btn btn-primary" onClick={() => setShowFiltres(false)}>
+                Voir {dossiersFiltres.length} dossier{dossiersFiltres.length > 1 ? 's' : ''}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <style>{tdCSS}</style>
     </div>
@@ -349,6 +421,66 @@ const tdCSS = `
     padding: 4px;
     line-height: 1;
   }
+
+  /* ── Bouton filtres / tris ───────────────────────────────────────────── */
+  .td-search-row { display: flex; align-items: center; gap: 8px; }
+  .td-search-row .td-search-wrap { flex: 1; min-width: 0; }
+  .td-btn-filtres {
+    position: relative;
+    width: 38px;
+    height: 38px;
+    flex-shrink: 0;
+    border-radius: 10px;
+    border: 1px solid rgba(255,255,255,0.15);
+    background: rgba(255,255,255,0.1);
+    color: rgba(255,255,255,0.75);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .td-btn-filtres:active { background: rgba(255,255,255,0.2); }
+  .td-btn-filtres:disabled { opacity: 0.4; }
+  .td-btn-filtres-on { background: rgba(255,255,255,0.22); border-color: rgba(255,255,255,0.5); color: #fff; }
+  .td-btn-filtres-dot {
+    position: absolute; top: 6px; right: 6px;
+    width: 7px; height: 7px; border-radius: 50%; background: #fff;
+  }
+
+  /* ── Panneau filtres / tris ──────────────────────────────────────────── */
+  .td-sheet { max-height: 85vh; overflow-y: auto; }
+  .td-sheet-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+  .td-sheet-title { font-size: 18px; font-weight: 600; color: #2A1F14; }
+  .td-sheet-close { border: none; background: none; color: #A09080; font-size: 14px; padding: 6px; cursor: pointer; }
+  .td-sheet-label {
+    font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px;
+    color: #A09080; margin: 4px 0 8px;
+  }
+  .td-sheet-options { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 18px; }
+  .td-opt {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 7px 12px; border-radius: 20px;
+    border: 0.5px solid #DDD8CE; background: #F0EBE3; color: #2A1F14;
+    font-size: 13px; font-weight: 500; font-family: inherit; cursor: pointer;
+  }
+  .td-opt-on { background: #1C3829; border-color: #1C3829; color: #fff; }
+  .td-opt-count { font-size: 11px; color: #A09080; }
+  .td-opt-on .td-opt-count { color: rgba(255,255,255,0.7); }
+  .td-sheet-tris { display: flex; flex-direction: column; margin-bottom: 20px; }
+  .td-tri {
+    display: flex; align-items: center; gap: 10px;
+    padding: 11px 2px; border: none; border-bottom: 1px solid #F0EBE3; background: none;
+    text-align: left; font-size: 14px; font-family: inherit; color: #2A1F14; cursor: pointer;
+  }
+  .td-tri:last-child { border-bottom: none; }
+  .td-tri-radio { width: 16px; height: 16px; border-radius: 50%; border: 1.5px solid #DDD8CE; flex-shrink: 0; box-sizing: border-box; }
+  .td-tri-on { font-weight: 600; }
+  .td-tri-on .td-tri-radio { border: 5px solid #1C3829; }
+  .td-sheet-actions { display: flex; gap: 10px; }
+  .td-sheet-actions .btn-ghost { flex: 1; }
+  .td-sheet-actions .btn-primary { flex: 2; }
+  .td-empty-reset { margin-top: 14px; }
 
   /* ── Filtres pills ───────────────────────────────────────────────────── */
   .td-pills {
