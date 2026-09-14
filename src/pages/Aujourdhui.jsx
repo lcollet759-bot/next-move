@@ -1,14 +1,68 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
-import { analyserBrainDump, genererMessageMatinal } from '../services/claude'
+import { analyserBrainDump, genererPlanJournee } from '../services/claude'
 import { getRoutines } from '../services/db'
 import {
   APP_TIME_ZONE, todayISO, todayFR, todayCalendarParts,
   isTaskInActionQueue, isTaskTimedToday,
 } from '../utils/date'
+import { construirePlanJournee, delaiAvantChangement } from '../utils/planJournee'
 
-const RESUME_KEY = (d) => `nm-resume-${d}`
+// ── Ta journée : cache localStorage du plan rédigé par l'IA ──────────────────
+// Clé = jour civil + signature du plan (utils/planJournee) : mêmes données utiles le même jour → aucun appel IA.
+// Quelques signatures du jour sont gardées : cocher puis décocher une tâche ne rappelle pas l'IA.
+const PLAN_CACHE_KEY = 'nm-plan-journee'
+const PLAN_CACHE_MAX = 5
+const PLAN_VIDE_TEXTE = 'Aucune contrainte ni action prioritaire détectée aujourd’hui.'
+const clePlan = (plan) => `${plan.referenceISO}|${plan.signature}`
+
+function lireCachePlan(plan) {
+  try {
+    const entrees = JSON.parse(localStorage.getItem(PLAN_CACHE_KEY))
+    const entree = Array.isArray(entrees)
+      ? entrees.find(e => e?.date === plan.referenceISO && e?.signature === plan.signature)
+      : null
+    return typeof entree?.texte === 'string' ? entree.texte : null
+  } catch { return null }
+}
+
+function ecrireCachePlan(plan, texte) {
+  try {
+    const entrees = JSON.parse(localStorage.getItem(PLAN_CACHE_KEY))
+    // Seules les entrées du jour sont conservées ; la signature courante remplace son ancienne entrée
+    const autres = (Array.isArray(entrees) ? entrees : [])
+      .filter(e => e?.date === plan.referenceISO && e?.signature !== plan.signature)
+    const entree = { date: plan.referenceISO, signature: plan.signature, texte, genereLe: new Date().toISOString() }
+    localStorage.setItem(PLAN_CACHE_KEY, JSON.stringify([entree, ...autres].slice(0, PLAN_CACHE_MAX)))
+  } catch { /* stockage indisponible : le plan reste affiché, sans cache */ }
+}
+
+// Au plus une génération par jour + signature, même si la page est quittée puis rouverte pendant l'appel.
+// Un échec n'est jamais retenté automatiquement pour la même signature : seul ↺ relance.
+const generationsEnCours = new Map()
+const echecsPlan = new Map()
+
+function genererPlanAvecCache(plan, forcer) {
+  const cle = clePlan(plan)
+  if (!forcer && generationsEnCours.has(cle)) return generationsEnCours.get(cle)
+  const promesse = genererPlanJournee(plan.texte)
+    .then(texte => {
+      if (!texte) throw new Error('Réponse vide.')
+      ecrireCachePlan(plan, texte)
+      echecsPlan.delete(cle)
+      return texte
+    })
+    .catch(e => {
+      echecsPlan.set(cle, e.message || 'Erreur de génération.')
+      throw e
+    })
+    .finally(() => {
+      if (generationsEnCours.get(cle) === promesse) generationsEnCours.delete(cle)
+    })
+  generationsEnCours.set(cle, promesse)
+  return promesse
+}
 
 function calcQuadrant(u, i) {
   if (u && i)  return 1
@@ -58,38 +112,82 @@ export default function Aujourdhui() {
     })
   }
 
-  // ── Résumé IA matinal ──────────────────────────────────────────────────────
-  const [resumeIA,      setResumeIA]      = useState(() => {
-    try { return localStorage.getItem(RESUME_KEY(todayISO())) || null } catch { return null }
-  })
-  const [resumeLoading, setResumeLoading] = useState(false)
-  const [resumeError,   setResumeError]   = useState(null)
+  // ── Ta journée : plan déterministe (utils/planJournee) rédigé par l'IA ─────
+  // L'heure seule ne change le plan qu'à des instants précis (heure fixe qui passe, minuit) : `tick` est avancé
+  // par un minuteur unique ciblé sur le prochain de ces instants, et au retour sur la page. Pas de polling.
+  const [tick,        setTick]        = useState(() => Date.now())
+  const [pageVisible, setPageVisible] = useState(() => document.visibilityState !== 'hidden')
+  const [planTexte,   setPlanTexte]   = useState(null)
+  const [planLoading, setPlanLoading] = useState(false)
+  const [planError,   setPlanError]   = useState(null)
+  const requetePlan = useRef(0)   // seule la dernière génération demandée met à jour l'affichage
 
-  const genererResume = useCallback(async () => {
-    if (!apiKey) return
-    const actifs = (dossiers || []).filter(d => d.etat !== 'clos').slice(0, 8)
-    if (actifs.length === 0) return
-    setResumeLoading(true); setResumeError(null)
+  // Tout le portefeuille : le constructeur écarte lui-même dossiers clos et tâches terminées
+  const plan = useMemo(() => construirePlanJournee(dossiers || []), [dossiers, tick]) // eslint-disable-line
+  const cleCourante = clePlan(plan)
+
+  const lancerGeneration = useCallback(async (p, forcer = false) => {
+    const id = ++requetePlan.current
+    setPlanLoading(true); setPlanError(null)
     try {
-      const msg = await genererMessageMatinal(actifs)
-      if (msg) {
-        setResumeIA(msg)
-        localStorage.setItem(RESUME_KEY(todayISO()), msg)
-      }
+      const texte = await genererPlanAvecCache(p, forcer)
+      if (id === requetePlan.current) setPlanTexte(texte)
     } catch (e) {
-      setResumeError(e.message || 'Erreur de génération.')
+      if (id === requetePlan.current) { setPlanTexte(null); setPlanError(e.message || 'Erreur de génération.') }
     } finally {
-      setResumeLoading(false)
+      if (id === requetePlan.current) setPlanLoading(false)
     }
-  }, [apiKey, dossiers])
+  }, [])
 
-  // Générer automatiquement au chargement si pas encore de résumé pour aujourd'hui
-  // Dépend aussi de `dossiers` pour se déclencher quand l'utilisateur revient sur l'écran
+  // Génération automatique : au plus une fois par jour + signature, page visible, jamais pour un plan vide.
+  // Cache trouvé, plan vide, pas de clé ou échec déjà constaté pour cette signature → aucun appel.
+  // La visibilité est lue au moment de l'effet ; `pageVisible` ne sert qu'à le relancer au retour sur la page.
   useEffect(() => {
-    if (!loading && apiKey && !resumeIA) {
-      genererResume()
+    if (loading || document.visibilityState === 'hidden') return
+    const enCache = plan.vide ? null : lireCachePlan(plan)
+    if (plan.vide || enCache || !apiKey || echecsPlan.has(cleCourante)) {
+      requetePlan.current++
+      setPlanLoading(false)
+      setPlanTexte(enCache)
+      setPlanError(plan.vide || enCache || !apiKey ? null : echecsPlan.get(cleCourante))
+      return
     }
-  }, [loading, dossiers]) // eslint-disable-line
+    lancerGeneration(plan)
+  }, [loading, pageVisible, apiKey, cleCourante]) // eslint-disable-line
+
+  // Minuteur ciblé : prochaine heure fixe du jour qui devient « passée », ou minuit
+  useEffect(() => {
+    const minuteur = setTimeout(() => setTick(Date.now()), delaiAvantChangement(plan))
+    return () => clearTimeout(minuteur)
+  }, [plan])
+
+  // Retour sur la page (onglet, application en arrière-plan) : l'heure a pu avancer pendant l'absence
+  useEffect(() => {
+    const auRetour = () => {
+      const visible = document.visibilityState !== 'hidden'
+      setPageVisible(visible)
+      if (visible) setTick(Date.now())
+    }
+    document.addEventListener('visibilitychange', auRetour)
+    window.addEventListener('focus', auRetour)
+    return () => {
+      document.removeEventListener('visibilitychange', auRetour)
+      window.removeEventListener('focus', auRetour)
+    }
+  }, [])
+
+  // ↺ : plan reconstruit depuis les données actuelles, génération forcée même à signature identique, cache remplacé
+  const rafraichirPlan = () => {
+    setTick(Date.now())
+    const actuel = construirePlanJournee(dossiers || [])
+    if (actuel.vide) {
+      requetePlan.current++
+      setPlanLoading(false); setPlanTexte(null); setPlanError(null)
+      return
+    }
+    if (!apiKey) { setPlanError('Clé API requise — configurez-la dans Réglages.'); return }
+    lancerGeneration(actuel, true)
+  }
 
   const lancerBrainDump = async () => {
     if (!bdTexte.trim()) return
@@ -237,25 +335,27 @@ export default function Aujourdhui() {
           <span className="aj-greet-bold">Ludovic.</span>
         </div>
 
-        {/* ── Résumé IA matinal ─────────────────────────────────────── */}
-        {(resumeIA || resumeLoading || resumeError) && (
+        {/* ── Ta journée ────────────────────────────────────────────── */}
+        {(plan.vide || planTexte || planLoading || planError) && (
           <div className="aj-resume-card">
             <div className="aj-resume-top">
-              <span className={`aj-resume-dot${resumeLoading ? ' aj-resume-dot-pulse' : ''}`} />
-              <span className="aj-resume-label">Résumé du jour</span>
+              <span className={`aj-resume-dot${planLoading ? ' aj-resume-dot-pulse' : ''}`} />
+              <span className="aj-resume-label">Ta journée</span>
               <button
                 className="aj-resume-refresh"
-                onClick={genererResume}
-                disabled={resumeLoading}
+                onClick={rafraichirPlan}
+                disabled={planLoading}
                 title="Régénérer"
               >↺</button>
             </div>
-            {resumeLoading ? (
+            {plan.vide ? (
+              <p className="aj-resume-text">{PLAN_VIDE_TEXTE}</p>
+            ) : planLoading ? (
               <div className="aj-resume-skeleton" />
-            ) : resumeError ? (
-              <p className="aj-resume-error">{resumeError}</p>
+            ) : planError ? (
+              <p className="aj-resume-error">{planError}</p>
             ) : (
-              <p className="aj-resume-text">{resumeIA}</p>
+              <p className="aj-resume-text">{planTexte}</p>
             )}
           </div>
         )}
@@ -645,6 +745,7 @@ const ajCSS = `
     line-height: 1.6;
     margin: 0;
     letter-spacing: -0.1px;
+    white-space: pre-line;
   }
   .aj-resume-skeleton {
     height: 52px;
