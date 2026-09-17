@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Routes, Route, Navigate } from 'react-router-dom'
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { useApp } from './context/AppContext'
 import Navigation from './components/Navigation'
 import ScrollToTop from './components/ScrollToTop'
@@ -14,6 +14,7 @@ import Reglages from './pages/Reglages'
 import ModeFocus from './pages/ModeFocus'
 import Routines from './pages/Routines'
 import Admin from './pages/Admin'
+import Pupitre from './pages/Pupitre'
 
 
 // ── App ───────────────────────────────────────────────────────────────────────
@@ -62,6 +63,11 @@ export default function App() {
 }
 
 function AuthenticatedApp() {
+  const { pathname } = useLocation()
+
+  // Pupitre desktop : rendu hors du shell mobile (pas de largeur max ni de barre du bas)
+  if (pathname === '/pupitre') return <Pupitre />
+
   return (
     <div className="app-shell">
       <ScrollToTop />
