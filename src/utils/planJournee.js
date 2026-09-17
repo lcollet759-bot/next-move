@@ -168,9 +168,13 @@ export function construirePlanJournee(dossiers, { maintenant = new Date() } = {}
       .map((t, ordreTache) => ({ t, ordreTache }))
       .filter(({ t }) => !t.done && texteCourt(t.titre))
 
-    // Échéance du dossier : repli seulement si aucune tâche, active ou terminée, ne porte d'échéance
-    // (sinon elle a été calculée depuis les tâches à la création et peut désigner une tâche déjà faite).
-    const repli = dateValide(d.echeance) && !taches.some(t => dateValide(t.echeance)) ? d.echeance : null
+    // Échéance du dossier : repli seulement si aucune tâche active ne porte d'échéance, et si elle n'est pas
+    // l'échéance d'une tâche déjà faite (calculée depuis les tâches à la création, elle désignerait cette tâche).
+    // Une tâche terminée avec une autre échéance ne masque donc plus l'échéance du dossier.
+    const echeancesFaites = new Set(taches.filter(t => t.done).map(t => dateValide(t.echeance)).filter(Boolean))
+    const repli = dateValide(d.echeance)
+      && !actives.some(({ t }) => dateValide(t.echeance))
+      && !echeancesFaites.has(d.echeance) ? d.echeance : null
 
     let rangSansDate = 0
     actives.forEach(({ t, ordreTache }, i) => {

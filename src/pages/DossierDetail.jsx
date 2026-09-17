@@ -5,6 +5,7 @@ import EtatBadge from '../components/EtatBadge'
 import { haptic } from '../utils/haptic'
 import { todayISO, isValidISODate, isValidISOTime } from '../utils/date'
 import { TRIS, trierTaches } from '../utils/dossiersFiltres'
+import { majDatesTache } from '../utils/echeanceTache'
 
 // ── Constantes ────────────────────────────────────────────────────────────────
 const ETATS = [
@@ -55,6 +56,13 @@ function formatPlanification(tache) {
   const [year, month, day] = tache.datePlanifiee.split('-').map(Number)
   const date = planDateFormatter.format(new Date(Date.UTC(year, month - 1, day)))
   return isValidISOTime(tache.heurePlanifiee) ? `${date} · ${tache.heurePlanifiee}` : date
+}
+
+// Échéance d'une tâche (dernier délai, distinct de la planification) → « 30 sept. 2026 » ; null si date invalide.
+function formatEcheanceTache(tache) {
+  if (!isValidISODate(tache?.echeance)) return null
+  const [year, month, day] = tache.echeance.split('-').map(Number)
+  return planDateFormatter.format(new Date(Date.UTC(year, month - 1, day)))
 }
 
 function daysUntil(iso) {
@@ -133,6 +141,7 @@ export default function DossierDetail() {
   const [planningTacheId, setPlanningTacheId] = useState(null)
   const [planningDate,    setPlanningDate]    = useState('')
   const [planningTime,    setPlanningTime]    = useState('')
+  const [planningEcheance, setPlanningEcheance] = useState('')
 
   // Tri des tâches : affichage seulement, rien n'est sauvegardé
   const [triTaches,     setTriTaches]     = useState('actuel')
@@ -207,7 +216,8 @@ export default function DossierDetail() {
   const planningTache = planningTacheId ? dossier.taches.find(t => t.id === planningTacheId) : null
   const planningValid =
     (!planningDate || isValidISODate(planningDate)) &&
-    (!planningTime || (Boolean(planningDate) && isValidISOTime(planningTime)))
+    (!planningTime || (Boolean(planningDate) && isValidISOTime(planningTime))) &&
+    (!planningEcheance || isValidISODate(planningEcheance))
 
   const openPlanning = (tache) => {
     if (isClos || tache.done) return
@@ -215,10 +225,11 @@ export default function DossierDetail() {
     const date = isValidISODate(tache.datePlanifiee) ? tache.datePlanifiee : ''
     setPlanningDate(date)
     setPlanningTime(date && isValidISOTime(tache.heurePlanifiee) ? tache.heurePlanifiee : '')
+    setPlanningEcheance(isValidISODate(tache.echeance) ? tache.echeance : '')
     setPlanningTacheId(tache.id)
   }
 
-  const closePlanning = () => { setPlanningTacheId(null); setPlanningDate(''); setPlanningTime('') }
+  const closePlanning = () => { setPlanningTacheId(null); setPlanningDate(''); setPlanningTime(''); setPlanningEcheance('') }
 
   // L'heure n'a de sens qu'avec une date : effacer la date efface aussi l'heure
   const handlePlanningDateChange = (value) => {
@@ -226,23 +237,29 @@ export default function DossierDetail() {
     if (!value) setPlanningTime('')
   }
 
-  // Ne réécrit que les deux champs de planification de la tâche visée (id, titre, done… préservés)
-  const savePlanification = (tacheId, datePlanifiee, heurePlanifiee) =>
-    mettreAJourDossier(id, { taches: dossier.taches.map(t => t.id === tacheId ? { ...t, datePlanifiee, heurePlanifiee } : t) })
+  // Ne réécrit que les champs de dates fournis de la tâche visée (id, titre, done… préservés).
+  // datePlanifiee / heurePlanifiee et echeance restent indépendantes : aucune n'est déduite de l'autre.
+  // L'échéance du dossier ne suit que si elle est la copie dérivée de l'ancienne échéance de la tâche.
+  const saveDatesTache = (tacheId, champs) =>
+    mettreAJourDossier(id, majDatesTache(dossier, tacheId, champs))
 
   const handlePlanningSave = async () => {
     if (!planningTache || isClos || planningTache.done || !planningValid) return
     const datePlanifiee  = planningDate || null
     const heurePlanifiee = planningDate && planningTime ? planningTime : null
+    const echeance       = planningEcheance || null
     closePlanning()
-    if ((planningTache.datePlanifiee ?? null) === datePlanifiee && (planningTache.heurePlanifiee ?? null) === heurePlanifiee) return
-    await savePlanification(planningTache.id, datePlanifiee, heurePlanifiee)
+    if ((planningTache.datePlanifiee ?? null) === datePlanifiee
+      && (planningTache.heurePlanifiee ?? null) === heurePlanifiee
+      && (planningTache.echeance ?? null) === echeance) return
+    await saveDatesTache(planningTache.id, { datePlanifiee, heurePlanifiee, echeance })
   }
 
+  // Retire la planification seulement : l'échéance de la tâche est conservée
   const handlePlanningRemove = async () => {
     if (!planningTache || isClos || planningTache.done) return
     closePlanning()
-    await savePlanification(planningTache.id, null, null)
+    await saveDatesTache(planningTache.id, { datePlanifiee: null, heurePlanifiee: null })
   }
 
   const handleAddEtape = async () => {
@@ -426,6 +443,19 @@ export default function DossierDetail() {
                   ) : formatPlanification(tache) && (
                     <span className="dd-tache-plan dd-tache-plan-ro">{formatPlanification(tache)}</span>
                   )}
+
+                  {/* Échéance de la tâche (dernier délai) : affichée seulement si elle existe */}
+                  {formatEcheanceTache(tache) && (!isClos && !tache.done ? (
+                    <button
+                      type="button"
+                      className={`dd-tache-plan dd-tache-ech${tache.echeance < todayISO() ? ' dd-tache-ech-retard' : ''}`}
+                      onClick={e => { e.stopPropagation(); openPlanning(tache) }}
+                    >
+                      Échéance · {formatEcheanceTache(tache)}
+                    </button>
+                  ) : (
+                    <span className="dd-tache-plan dd-tache-plan-ro">Échéance · {formatEcheanceTache(tache)}</span>
+                  ))}
                 </div>
 
                 {!isClos && (
@@ -741,10 +771,10 @@ export default function DossierDetail() {
       {planningTache && (
         <div className="overlay" onClick={closePlanning}>
           <div className="sheet" onClick={e => e.stopPropagation()}>
-            <h3 style={{ fontSize: 18, fontWeight: 600, marginBottom: 4 }}>Planifier la tâche</h3>
+            <h3 style={{ fontSize: 18, fontWeight: 600, marginBottom: 4 }}>Dates de la tâche</h3>
             <p className="dd-plan-tache">{planningTache.titre}</p>
 
-            <label className="dd-plan-label" htmlFor="dd-plan-date">Date</label>
+            <label className="dd-plan-label" htmlFor="dd-plan-date">Date prévue</label>
             <input
               id="dd-plan-date"
               type="date"
@@ -761,6 +791,15 @@ export default function DossierDetail() {
               value={planningTime}
               disabled={!planningDate}
               onChange={e => setPlanningTime(e.target.value)}
+            />
+
+            <label className="dd-plan-label" htmlFor="dd-plan-echeance">Échéance — dernier délai, facultative</label>
+            <input
+              id="dd-plan-echeance"
+              type="date"
+              className="input dd-plan-input"
+              value={planningEcheance}
+              onChange={e => setPlanningEcheance(e.target.value)}
             />
 
             <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
@@ -978,6 +1017,8 @@ const CSS = `
   .dd-tache-plan:active { color: #1C3829; }
   .dd-tache-plan-set { color: #7A6A5A; font-weight: 500; }
   .dd-tache-plan-ro, .dd-tache-plan-ro:active { color: #A09080; cursor: default; }
+  .dd-tache-ech { color: #7A6A5A; margin-top: 4px; }
+  .dd-tache-ech-retard { color: #C4623A; font-weight: 600; }
 
   /* Sheet planification */
   .dd-plan-tache {
