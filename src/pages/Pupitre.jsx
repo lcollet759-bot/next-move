@@ -1,14 +1,11 @@
 import { useState } from 'react'
-import { useApp } from '../context/AppContext'
 import DossiersPanel from '../components/pupitre/DossiersPanel'
+import DossierWorkspace from '../components/pupitre/DossierWorkspace'
 
 // Route expérimentale /pupitre — shell desktop en trois zones.
 // Orchestration seulement : détient la sélection courante ; chaque colonne porte sa propre logique.
 export default function Pupitre() {
-  const { dossiers } = useApp()
   const [selectedId, setSelectedId] = useState(null)
-
-  const selected = dossiers.find(d => d.id === selectedId) || null
 
   return (
     <div className="pp-shell">
@@ -16,12 +13,7 @@ export default function Pupitre() {
         <h2 className="pp-section-title">Ta journée</h2>
       </section>
 
-      <section className="pp-col pp-travail">
-        <h2 className="pp-section-title">Travail actif</h2>
-        {selected
-          ? <h1 className="pp-travail-titre">{selected.titre}</h1>
-          : <p className="pp-empty">Sélectionne un dossier.</p>}
-      </section>
+      <DossierWorkspace dossierId={selectedId} />
 
       <DossiersPanel selectedId={selectedId} onSelectDossier={setSelectedId} />
 
@@ -50,11 +42,6 @@ export default function Pupitre() {
           letter-spacing: 1px;
           color: var(--text-secondary);
           margin-bottom: 12px;
-        }
-        .pp-travail-titre {
-          font-size: 20px;
-          font-weight: 700;
-          color: var(--text);
         }
         .pp-empty {
           font-size: 13px;
