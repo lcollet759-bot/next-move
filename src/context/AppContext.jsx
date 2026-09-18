@@ -1,4 +1,4 @@
-import { createContext, useContext, useReducer, useEffect, useCallback, useState } from 'react'
+import { createContext, useContext, useReducer, useEffect, useCallback, useRef, useState } from 'react'
 import { v4 as uuid } from 'uuid'
 import * as db from '../services/db'
 import { getCurrentUser, getUserProfile, onAuthStateChange, signOut } from '../services/db'
@@ -10,6 +10,12 @@ const AppContext = createContext(null)
 const RECALC_KEY = 'nm-last-recalc'
 const PING_KEY   = 'last_supabase_ping'
 const PING_INTERVAL_MS = 48 * 60 * 60 * 1000   // 48h
+
+// ── Resync au retour au premier plan ─────────────────────────────────────────
+// Les données n'étaient chargées qu'une fois par session : une modification faite sur un autre
+// appareil ou un autre onglet n'apparaissait qu'après un rechargement complet de la page.
+const RESYNC_INTERVAL_MIN_MS = 60_000   // deux essais ne peuvent pas être plus rapprochés (anti-rafale)
+const RESYNC_TIMEOUT_MS      = 8000     // plus généreux qu'au démarrage : ici, échouer ne bloque rien, on garde l'état
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -24,6 +30,16 @@ function withTimeout(promise, ms = 3000) {
 }
 
 const estTimeout = (err) => err?.message?.startsWith('Timeout après')
+
+// Lecture des données, partagée par le chargement initial et le resync.
+// Ne fait que lire : ni migration IndexedDB, ni ping keep-alive, qui restent propres au démarrage.
+export async function chargerDonnees(userId, ms) {
+  const [dossiers, journal] = await withTimeout(
+    Promise.all([db.getDossiers(userId), db.getJournal(userId)]),
+    ms
+  )
+  return { dossiers: [...dossiers].sort((a, b) => b.createdAt.localeCompare(a.createdAt)), journal }
+}
 
 // Mappe un état dossier vers le statut d'étape correspondant
 const ETAT_TO_ETAPE_STATUT = {
@@ -101,6 +117,10 @@ function reducer(state, action) {
   switch (action.type) {
     case 'LOADED':
       return { ...state, dossiers: action.dossiers, journal: action.journal, loading: false }
+    // Resync : remplace les données par celles du serveur sans toucher à `loading`, donc sans
+    // squelette de chargement ni relance des effets qui en dépendent. Jamais dispatché sur échec.
+    case 'RESYNC':
+      return { ...state, dossiers: action.dossiers, journal: action.journal }
     case 'RESET':
       return { ...init, loading: false }
     case 'ADD_DOSSIER':
@@ -129,6 +149,21 @@ export function AppProvider({ children }) {
   const [userProfile, setUserProfile]       = useState(null)
   const [authLoading, setAuthLoading]       = useState(true)
   const [authErrorMessage, setAuthErrorMessage] = useState('')
+
+  // ── Garde du resync ───────────────────────────────────────────────────────
+  // Une mutation met l'écran à jour immédiatement puis attend Supabase jusqu'à 12 s. Un resync qui
+  // tomberait dans cette fenêtre rapporterait la ligne d'avant l'écriture et annulerait visuellement
+  // la modification : tant qu'une écriture est en vol, le resync est sauté (jamais mis en attente).
+  const ecrituresEnVol = useRef(0)
+  const resyncEnCours  = useRef(false)
+  const dernierEssai   = useRef(0)
+
+  // Enveloppe une mutation sans rien changer à son comportement : seul le compteur bouge.
+  const protegerEcriture = (fn) => async (...args) => {
+    ecrituresEnVol.current++
+    try { return await fn(...args) }
+    finally { ecrituresEnVol.current-- }
+  }
 
   // ── Auth ──────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -236,22 +271,17 @@ export function AppProvider({ children }) {
         }
       } catch {}
 
-      let [dossiers, journal] = [[], []]
+      let donnees = { dossiers: [], journal: [] }
       try {
-        [dossiers, journal] = await withTimeout(
-          Promise.all([
-            db.getDossiers(authUser?.id),
-            db.getJournal(authUser?.id),
-          ]),
-          3000
-        )
+        donnees = await chargerDonnees(authUser?.id, 3000)
       } catch (err) {
         console.warn('[load] Supabase timeout, app starting offline', err.message)
         // Dossiers et journal restent vides — l'app démarre quand même
       }
 
-      dossiers.sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-      dispatch({ type: 'LOADED', dossiers, journal })
+      // Au démarrage seulement : un échec laisse l'app partir hors-ligne, écran vide assumé.
+      // Le resync, lui, ne dispatche jamais sur échec (voir rafraichirDonnees).
+      dispatch({ type: 'LOADED', ...donnees })
     }
     load()
     requestPermission()
@@ -260,6 +290,46 @@ export function AppProvider({ children }) {
     return () => clearInterval(interval)
   }, [authUser])
 
+  // ── Resync au retour au premier plan ──────────────────────────────────────
+  // Retourne la raison du refus, ou 'ok'. Ne lève jamais : un appelant peut l'ignorer sans risque.
+  const rafraichirDonnees = useCallback(async () => {
+    if (!authUser)                 return 'sans-session'
+    if (ecrituresEnVol.current > 0) return 'ecriture-en-vol'   // l'état optimiste reste prioritaire
+    if (resyncEnCours.current)      return 'deja-en-cours'
+    // Anti-rafale : compté depuis le début de l'essai, pour ne pas marteler un réseau indisponible
+    if (Date.now() - dernierEssai.current < RESYNC_INTERVAL_MIN_MS) return 'trop-recent'
+
+    resyncEnCours.current = true
+    dernierEssai.current = Date.now()
+    try {
+      const donnees = await chargerDonnees(authUser.id, RESYNC_TIMEOUT_MS)
+      // Une mutation a pu démarrer pendant la requête : ses données seraient plus fraîches que celles-ci
+      if (ecrituresEnVol.current > 0) return 'ecriture-en-vol'
+      dispatch({ type: 'RESYNC', ...donnees })
+      return 'ok'
+    } catch (err) {
+      // Aucun dispatch : l'état courant est conservé tel quel, jamais vidé
+      console.warn('[resync]', estTimeout(err) ? 'timeout, état conservé' : 'échec, état conservé', err.message)
+      return 'echec'
+    } finally {
+      resyncEnCours.current = false
+    }
+  }, [authUser])
+
+  // Un seul mécanisme pour toute l'application, sans polling : le Pupitre en bénéficie par héritage.
+  useEffect(() => {
+    if (!authUser) return
+    const auRetour = () => {
+      if (document.visibilityState !== 'hidden') rafraichirDonnees()
+    }
+    document.addEventListener('visibilitychange', auRetour)
+    window.addEventListener('focus', auRetour)
+    return () => {
+      document.removeEventListener('visibilitychange', auRetour)
+      window.removeEventListener('focus', auRetour)
+    }
+  }, [authUser, rafraichirDonnees])
+
   async function log(dossierId, action, detail) {
     const entry = { id: uuid(), dossierId, action, detail, timestamp: new Date().toISOString() }
     await db.addJournalEntry(entry, authUser?.id)
@@ -267,7 +337,7 @@ export function AppProvider({ children }) {
   }
 
   // ── creerDossier ──────────────────────────────────────────────────────────
-  const creerDossier = useCallback(async (data) => {
+  const creerDossier = useCallback(protegerEcriture(async (data) => {
     const titre     = validateDossier(data)
     const urgence   = data.urgence   ?? false
     const importance = data.importance ?? true
@@ -313,10 +383,10 @@ export function AppProvider({ children }) {
       createdAt: dossier.createdAt,
     }, authUser?.id)
     return dossier
-  }, [state.dossiers, authUser])
+  }), [state.dossiers, authUser])
 
   // ── mettreAJourDossier ────────────────────────────────────────────────────
-  const mettreAJourDossier = useCallback(async (id, updates) => {
+  const mettreAJourDossier = useCallback(protegerEcriture(async (id, updates) => {
     const dossier = state.dossiers.find(d => d.id === id)
     if (!dossier) return null
 
@@ -381,10 +451,10 @@ export function AppProvider({ children }) {
       }, authUser?.id)
     }
     return updated
-  }, [state.dossiers, authUser])
+  }), [state.dossiers, authUser])
 
   // ── Tâches ────────────────────────────────────────────────────────────────
-  const toggleTache = useCallback(async (dossierId, tacheId) => {
+  const toggleTache = useCallback(protegerEcriture(async (dossierId, tacheId) => {
     const dossier = state.dossiers.find(d => d.id === dossierId)
     if (!dossier) return
     const taches  = dossier.taches.map(t => t.id === tacheId ? { ...t, done: !t.done } : t)
@@ -404,9 +474,9 @@ export function AppProvider({ children }) {
       }
       console.warn('[toggleTache] sauvegarde', estTimeout(err) ? 'timeout, état conservé' : 'échouée, rollback', err.message)
     }
-  }, [state.dossiers, authUser])
+  }), [state.dossiers, authUser])
 
-  const ajouterTache = useCallback(async (dossierId, titre) => {
+  const ajouterTache = useCallback(protegerEcriture(async (dossierId, titre) => {
     const titreTrim = (titre || '').trim()
     if (!titreTrim) return
     const dossier = state.dossiers.find(d => d.id === dossierId)
@@ -425,9 +495,9 @@ export function AppProvider({ children }) {
       }
       console.warn('[ajouterTache] sauvegarde', estTimeout(err) ? 'timeout, état conservé' : 'échouée, rollback', err.message)
     }
-  }, [state.dossiers, authUser])
+  }), [state.dossiers, authUser])
 
-  const supprimerTache = useCallback(async (dossierId, tacheId) => {
+  const supprimerTache = useCallback(protegerEcriture(async (dossierId, tacheId) => {
     const dossier = state.dossiers.find(d => d.id === dossierId)
     if (!dossier) return
     const now = new Date().toISOString()
@@ -443,7 +513,7 @@ export function AppProvider({ children }) {
       }
       console.warn('[supprimerTache] sauvegarde', estTimeout(err) ? 'timeout, état conservé' : 'échouée, rollback', err.message)
     }
-  }, [state.dossiers, authUser])
+  }), [state.dossiers, authUser])
 
   // ── Étapes manuelles ─────────────────────────────────────────────────────
   const ajouterEtapeManuelle = useCallback(async (dossierId, { date, texte, statut }) => {
@@ -465,7 +535,7 @@ export function AppProvider({ children }) {
   }, [authUser])
 
   // ── Suppression dossier ───────────────────────────────────────────────────
-  const supprimerDossier = useCallback(async (id) => {
+  const supprimerDossier = useCallback(protegerEcriture(async (id) => {
     const dossier = state.dossiers.find(d => d.id === id)
     // UI optimiste : retrait immédiat de l'écran
     removeReminder(id)
@@ -479,7 +549,7 @@ export function AppProvider({ children }) {
       }
       console.warn('[supprimerDossier] suppression', estTimeout(err) ? 'timeout, état conservé' : 'échouée, rollback', err.message)
     }
-  }, [state.dossiers, authUser])
+  }), [state.dossiers, authUser])
 
   // ── Clé API ───────────────────────────────────────────────────────────────
   const setApiKey = useCallback((key) => {
@@ -509,6 +579,7 @@ export function AppProvider({ children }) {
       ajouterTache,
       supprimerTache,
       supprimerDossier,
+      rafraichirDonnees,
       ajouterEtapeManuelle,
       supprimerEtape,
       setApiKey,
