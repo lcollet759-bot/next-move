@@ -24,6 +24,13 @@
   --gray:           #A09080;
   --gray-light:     #F0EBE3;
 
+  /* Catégories temporelles — sémantique partagée Aujourd'hui / Pupitre.
+     Mêmes couleurs que la palette, nommées par signification et non par teinte. */
+  --cat-retard:     #C0392B;   /* en retard : échéance dépassée, planifié non fait */
+  --cat-attention:  #C4623A;   /* urgence / attention : échéance proche */
+  --cat-actif:      #1C3829;   /* aujourd'hui, normal actif */
+  --cat-attente:    #A09080;   /* attente externe, secondaire */
+
   /* New tokens */
   --color-bg:           #F7F5F0;
   --color-surface:      #FFFFFF;
