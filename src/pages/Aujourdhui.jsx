@@ -5,7 +5,7 @@ import { analyserBrainDump, genererPlanJournee } from '../services/claude'
 import { getRoutines } from '../services/db'
 import {
   APP_TIME_ZONE, todayISO, todayFR, todayCalendarParts,
-  isTaskInActionQueue, isTaskTimedToday,
+  isTaskInActionQueue,
 } from '../utils/date'
 import { construirePlanJournee, delaiAvantChangement } from '../utils/planJournee'
 
@@ -79,6 +79,76 @@ function routinesDuJour(routines) {
     if (r.recurrence === 'monthly') return r.jourMois    === dom
     return false
   })
+}
+
+// ── Catégories temporelles ───────────────────────────────────────────────────
+// Une tâche n'appartient qu'à une seule catégorie : le classement exclusif vient de
+// construirePlanJournee (utils/planJournee), jamais d'un calcul propre à la page.
+// « Maintenant » est à part : c'est une recommandation, elle peut pointer une tâche déjà classée ici.
+const CATEGORIES = [
+  { cle: 'retard',  titre: 'En retard',           sections: ['echeancesDepassees', 'retardsPlanification'] },
+  { cle: 'jour',    titre: 'Aujourd’hui',         sections: ['echeancesAujourdhui', 'planifieAujourdhui'] },
+  { cle: 'semaine', titre: 'Cette semaine',       sections: ['echeancesProches'] },
+  { cle: 'next',    titre: 'Ensuite',             sections: ['sansDate'] },
+]
+
+const dateCourteFormatter = new Intl.DateTimeFormat('fr-FR', { timeZone: 'UTC', day: 'numeric', month: 'short' })
+
+// 'YYYY-MM-DD' → « 15 sept. » (midi UTC : calendrier neutre, aucun décalage de fuseau)
+function dateCourte(iso) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso ?? '')) return null
+  const [annee, mois, jour] = iso.split('-').map(Number)
+  return dateCourteFormatter.format(new Date(Date.UTC(annee, mois - 1, jour, 12)))
+}
+
+// Complément de droite selon la catégorie : la date concernée porte la couleur du bloc
+function complementDe(cle, item) {
+  if (cle === 'retard')  return dateCourte(item.echeance) || dateCourte(item.datePlanifiee)
+  if (cle === 'semaine') return dateCourte(item.echeance)
+  if (cle === 'jour')    return item.echeance ? 'échéance' : null
+  return item.dureeMin ? `${item.dureeMin} min` : null
+}
+
+// Un item du plan ne porte pas le dossier complet : seul dossierId sert à naviguer.
+// tacheId peut être un repli « dossierId#rang » — il ne désigne aucune tâche enregistrée, on ne s'en sert jamais.
+function LigneCategorie({ cle, item, onOuvrir }) {
+  const complement = complementDe(cle, item)
+  const attente = item.etat !== 'actionnable'
+  return (
+    <div
+      className={`aj-cat-row${attente ? ' aj-cat-row-attente' : ''}`}
+      onClick={() => onOuvrir(item.dossierId)}
+      onTouchEnd={(e) => { e.preventDefault(); onOuvrir(item.dossierId) }}
+    >
+      <span className="aj-cat-texte">
+        <span className="aj-cat-titre">{item.titre || item.dossierTitre}</span>
+        <span className="aj-cat-sous">
+          {item.titre ? item.dossierTitre : 'Dossier'}
+          {item.organisme && ` · ${item.organisme}`}
+        </span>
+      </span>
+      {complement && <span className={`aj-cat-comp aj-cat-comp-${cle}`}>{complement}</span>}
+    </div>
+  )
+}
+
+// masque : nombre d'éléments écartés par les plafonds du plan — toujours annoncé, jamais masqué en silence
+function BlocCategorie({ cle, titre, items, masque, onOuvrir }) {
+  if (items.length === 0) return null
+  return (
+    <div className="aj-section">
+      <div className={`aj-vline aj-vline-${cle}`} />
+      <div className="aj-section-body">
+        <span className={`aj-slabel aj-slabel-${cle}`}>{titre}</span>
+        {items.map(item => (
+          <LigneCategorie key={`${item.dossierId}-${item.ordreTache}`} cle={cle} item={item} onOuvrir={onOuvrir} />
+        ))}
+        {masque > 0 && (
+          <p className="aj-cat-masque">+ {masque} autre{masque > 1 ? 's' : ''} non affiché{masque > 1 ? 's' : ''}</p>
+        )}
+      </div>
+    </div>
+  )
 }
 
 export default function Aujourdhui() {
@@ -263,19 +333,21 @@ export default function Aujourdhui() {
       .map(t => ({ tache: t, dossier: d }))
   )
 
-  // Planifié aujourd'hui : tous les dossiers actionnables, sans limite de 7, tri par heure
-  const tachesPlanifieesAujourdhui = (dossiers || [])
-    .filter(d => d.etat === 'actionnable')
-    .flatMap(d =>
-      (d.taches || [])
-        .filter(t => isTaskTimedToday(t, today))
-        .map(t => ({ tache: t, dossier: d }))
-    )
-    .sort((a, b) => a.tache.heurePlanifiee.localeCompare(b.tache.heurePlanifiee))
+  // Planifié aujourd'hui : heures fixes du plan (déjà triées par heure, jamais plafonnées)
+  const tachesPlanifieesAujourdhui = plan.sections.heuresFixes
+
+  // Catégories temporelles : un seul bloc par tâche, dans l'ordre de priorité de CATEGORIES
+  const categories = CATEGORIES.map(({ cle, titre, sections }) => ({
+    cle,
+    titre,
+    items:  sections.flatMap(s => plan.sections[s]),
+    masque: sections.reduce((n, s) => n + (plan.masques[s] || 0), 0),
+  }))
+
+  const ouvrirDossier = (dossierId) => navigate(`/dossiers/${dossierId}`)
 
   const indexEffectif  = Math.min(indexTache, Math.max(0, toutesLesTaches.length - 1))
   const tacheNow       = toutesLesTaches[indexEffectif] || null
-  const tachesNext     = toutesLesTaches.slice(indexEffectif + 1, indexEffectif + 4)
 
   const handleApres = () => {
     if (toutesLesTaches.length <= 1) return
@@ -391,22 +463,25 @@ export default function Aujourdhui() {
 
           /* ══ ÉTAT ACTIF ═════════════════════════════════════════════ */
           <>
-            {/* ── Planifié aujourd'hui ─────────────────────────────── */}
+            {/* ── En retard ────────────────────────────────────────── */}
+            <BlocCategorie {...categories[0]} onOuvrir={ouvrirDossier} />
+
+            {/* ── Planifié aujourd'hui (heures fixes) ──────────────── */}
             {tachesPlanifieesAujourdhui.length > 0 && (
               <div className="aj-section">
                 <div className="aj-vline aj-vline-planned" />
                 <div className="aj-section-body">
                   <span className="aj-slabel aj-slabel-planned">Planifié aujourd’hui</span>
-                  {tachesPlanifieesAujourdhui.map(({ tache, dossier }) => (
+                  {tachesPlanifieesAujourdhui.map(item => (
                     <div
-                      key={`${dossier.id}-${tache.id}`}
-                      className="aj-planned-row"
-                      onClick={() => navigate(`/dossiers/${dossier.id}`)}
+                      key={`${item.dossierId}-${item.ordreTache}`}
+                      className={`aj-planned-row${item.etat !== 'actionnable' ? ' aj-cat-row-attente' : ''}`}
+                      onClick={() => ouvrirDossier(item.dossierId)}
                     >
-                      <span className="aj-planned-heure">{tache.heurePlanifiee}</span>
+                      <span className="aj-planned-heure">{item.heurePlanifiee}</span>
                       <div className="aj-planned-texte">
-                        <span className="aj-planned-titre">{tache.titre}</span>
-                        <span className="aj-planned-dossier">{dossier.titre}</span>
+                        <span className="aj-planned-titre">{item.titre || item.dossierTitre}</span>
+                        <span className="aj-planned-dossier">{item.titre ? item.dossierTitre : 'Dossier'}</span>
                       </div>
                     </div>
                   ))}
@@ -414,7 +489,10 @@ export default function Aujourdhui() {
               </div>
             )}
 
-            {/* ── Maintenant ───────────────────────────────────────── */}
+            {/* ── Aujourd'hui ──────────────────────────────────────── */}
+            <BlocCategorie {...categories[1]} onOuvrir={ouvrirDossier} />
+
+            {/* ── Maintenant (recommandation, pas une catégorie) ───── */}
             {tacheNow && (
               <div className="aj-section">
                 <div className="aj-vline aj-vline-now" />
@@ -441,30 +519,11 @@ export default function Aujourdhui() {
               </div>
             )}
 
+            {/* ── Cette semaine ────────────────────────────────────── */}
+            <BlocCategorie {...categories[2]} onOuvrir={ouvrirDossier} />
+
             {/* ── Ensuite ──────────────────────────────────────────── */}
-            {tachesNext.length > 0 && (
-              <div className="aj-section">
-                <div className="aj-vline aj-vline-next" />
-                <div className="aj-section-body">
-                  <span className="aj-slabel aj-slabel-next">Ensuite</span>
-                  {tachesNext.map(({ tache, dossier }) => {
-                    const dotColor =
-                      dossier.quadrant === 1 ? '#C0392B' :
-                      dossier.quadrant === 2 ? '#1C3829' :
-                      dossier.quadrant === 3 ? '#B45309' : '#C0B8A8'
-                    return (
-                      <div key={tache.id} className="aj-next-row">
-                        <span className="aj-dot" style={{ background: dotColor }} />
-                        <span className="aj-next-titre">{tache.titre}</span>
-                        {tache.dureeMin && (
-                          <span className="aj-next-duree">{tache.dureeMin} min</span>
-                        )}
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-            )}
+            <BlocCategorie {...categories[3]} onOuvrir={ouvrirDossier} />
 
             {/* ── Routines du jour ─────────────────────────────────── */}
             {routinesJour.length > 0 && (
@@ -833,9 +892,12 @@ const ajCSS = `
     align-self: stretch;
     min-height: 60px;
   }
-  .aj-vline-now  { background: #1C3829; }
-  .aj-vline-next { background: #B5A898; }
-  .aj-vline-wait { background: #C4623A; }
+  .aj-vline-now     { background: var(--cat-actif); }
+  .aj-vline-retard  { background: var(--cat-retard); }
+  .aj-vline-jour    { background: var(--cat-actif); }
+  .aj-vline-semaine { background: var(--cat-attention); }
+  .aj-vline-next    { background: #B5A898; }
+  .aj-vline-wait    { background: var(--cat-attente); }
 
   .aj-section-body {
     flex: 1;
@@ -850,9 +912,12 @@ const ajCSS = `
     margin-bottom: 7px;
     line-height: 1;
   }
-  .aj-slabel-now  { color: #1C3829; }
-  .aj-slabel-next { color: #8A7A6A; }
-  .aj-slabel-wait { color: #C4623A; }
+  .aj-slabel-now     { color: var(--cat-actif); }
+  .aj-slabel-retard  { color: var(--cat-retard); }
+  .aj-slabel-jour    { color: var(--cat-actif); }
+  .aj-slabel-semaine { color: var(--cat-attention); }
+  .aj-slabel-next    { color: #8A7A6A; }
+  .aj-slabel-wait    { color: var(--cat-attente); }
 
   /* Maintenant */
   .aj-task-title {
@@ -900,31 +965,55 @@ const ajCSS = `
   }
   .aj-btn-later:active { background: #F0EBE3; }
 
-  /* Ensuite */
-  .aj-next-row {
+  /* Lignes de catégorie (En retard · Aujourd'hui · Cette semaine · Ensuite) */
+  .aj-cat-row {
     display: flex;
     align-items: center;
-    gap: 9px;
-    padding: 5px 0;
+    gap: 10px;
+    padding: 7px 0;
     border-bottom: 1px solid #F0EBE3;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
   }
-  .aj-next-row:last-child { border-bottom: none; }
-  .aj-dot {
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-    flex-shrink: 0;
-  }
-  .aj-next-titre {
+  .aj-cat-row:last-child { border-bottom: none; }
+  .aj-cat-row:active { opacity: 0.6; }
+  .aj-cat-texte {
     flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .aj-cat-titre {
     font-size: 14px;
     color: #2A1F14;
-    line-height: 1.4;
+    line-height: 1.35;
   }
-  .aj-next-duree {
+  .aj-cat-sous {
     font-size: 11px;
     color: #A09080;
+    line-height: 1.3;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  /* Dossier en attente / bloqué / à l'œil : la ligne s'efface, le bloc garde sa couleur */
+  .aj-cat-row-attente .aj-cat-titre,
+  .aj-cat-row-attente .aj-planned-titre { color: var(--cat-attente); }
+
+  .aj-cat-comp {
     flex-shrink: 0;
+    font-size: 11px;
+    color: #A09080;
+    font-variant-numeric: tabular-nums;
+  }
+  .aj-cat-comp-retard  { color: var(--cat-retard); font-weight: 700; }
+  .aj-cat-comp-semaine { color: var(--cat-attention); font-weight: 600; }
+  .aj-cat-comp-jour    { color: var(--cat-actif); }
+  .aj-cat-masque {
+    font-size: 11px;
+    color: #C0B8A8;
+    padding-top: 7px;
   }
 
   /* Routines du jour */
@@ -980,8 +1069,8 @@ const ajCSS = `
   }
 
   /* Planifié aujourd'hui */
-  .aj-vline-planned  { background: rgba(28,56,41,0.45); }
-  .aj-slabel-planned { color: #1C3829; }
+  .aj-vline-planned  { background: var(--cat-actif); }
+  .aj-slabel-planned { color: var(--cat-actif); }
   .aj-planned-row {
     display: flex;
     align-items: baseline;
@@ -1031,15 +1120,16 @@ const ajCSS = `
     color: #A09080;
     margin-bottom: 7px;
   }
+  /* Seule alerte du bloc (≥ 15 jours sans retour) : elle garde la couleur d'attention */
   .aj-wait-relance {
     font-size: 12px;
-    color: #C4623A;
+    color: var(--cat-attention);
     margin-bottom: 7px;
   }
   .aj-wait-more {
     background: none;
     border: none;
-    color: #C4623A;
+    color: var(--cat-attente);
     font-size: 13px;
     font-weight: 600;
     font-family: inherit;
