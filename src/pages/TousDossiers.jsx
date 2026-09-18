@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 import { FILTRES_TEMPS, TRIS, dossierCorrespond, dossierCorrespondTemps, trierDossiers } from '../utils/dossiersFiltres'
+import { useHorlogeApp } from '../hooks/useHorlogeApp'
 
 // ── Filtres ───────────────────────────────────────────────────────────────────
 const FILTRES = [
@@ -103,6 +104,10 @@ export default function TousDossiers() {
     if (FILTRES.some(x => x.key === f)) setFiltre(f)
   }, [searchParams])
 
+  // Jour civil Europe/Zurich : les filtres temporels basculent à minuit et au retour au premier plan,
+  // même si aucun dossier n'a changé. Son identité est stable au sein d'une journée.
+  const { jour } = useHorlogeApp()
+
   const { dossiersFiltres, comptesTemps } = useMemo(() => {
     let list = [...dossiers]
 
@@ -116,11 +121,11 @@ export default function TousDossiers() {
     list = list.filter(d => dossierCorrespond(d, recherche))
 
     // Période (tâches actives uniquement) ; compteurs affichés dans le panneau
-    const comptesTemps = Object.fromEntries(FILTRES_TEMPS.map(f => [f.key, list.filter(d => dossierCorrespondTemps(d, f.key)).length]))
-    if (filtreTemps) list = list.filter(d => dossierCorrespondTemps(d, filtreTemps))
+    const comptesTemps = Object.fromEntries(FILTRES_TEMPS.map(f => [f.key, list.filter(d => dossierCorrespondTemps(d, f.key, jour)).length]))
+    if (filtreTemps) list = list.filter(d => dossierCorrespondTemps(d, filtreTemps, jour))
 
     return { dossiersFiltres: trierDossiers(list, tri), comptesTemps }
-  }, [dossiers, filtre, recherche, filtreTemps, tri])
+  }, [dossiers, filtre, recherche, filtreTemps, tri, jour])
 
   const counts = useMemo(() => ({
     tous:    dossiers.filter(d => d.etat !== 'clos').length,
