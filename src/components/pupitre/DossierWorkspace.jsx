@@ -1,10 +1,11 @@
+import { useEffect, useRef } from 'react'
 import { useDossier } from '../../hooks/useDossier'
 import { todayISO, isValidISODate, isValidISOTime } from '../../utils/date'
 
-// Zone centrale du Pupitre : le dossier sélectionné, en lecture.
-// D3 n'autorise qu'une seule écriture — cocher / décocher une tâche via AppContext (toggleTache).
+// Travail actif : le dossier ouvert, en lecture, avec sa tâche repérée quand l'appelant en désigne une.
+// Une seule écriture autorisée à ce stade — cocher / décocher une tâche via AppContext (toggleTache).
 // Édition des tâches, planification, états, clôture et « Noter » arrivent en D4.
-// Les classes partagées (.pp-col, .pp-section-title, .pp-empty) sont définies par Pupitre.jsx.
+// Les classes partagées (.pp-section-title, .pp-empty) sont définies par Pupitre.jsx.
 
 // Libellés UX (mêmes valeurs que DossierDetail : jamais de statut technique à l'écran)
 const ETAT_LABELS = {
@@ -43,12 +44,22 @@ function joursAvant(iso, referenceISO) {
   return Math.round((jour(iso) - jour(referenceISO)) / 86_400_000)
 }
 
-export default function DossierWorkspace({ dossierId }) {
+export default function DossierWorkspace({ dossierId, tacheId }) {
   const { dossier, etapes, isClos, tachesDone, total, pct, toggleTache } = useDossier(dossierId)
+  const tacheRef = useRef(null)
+
+  // La tâche désignée n'est mise en avant que si elle existe vraiment dans ce dossier
+  const tacheVisee = dossier && tacheId
+    ? (Array.isArray(dossier.taches) ? dossier.taches : []).find(t => t.id === tacheId)?.id ?? null
+    : null
+
+  useEffect(() => {
+    if (tacheVisee) tacheRef.current?.scrollIntoView({ block: 'nearest' })
+  }, [tacheVisee, dossierId])
 
   if (!dossierId) {
     return (
-      <section className="pp-col pp-travail">
+      <section className="dw dw--vide">
         <h2 className="pp-section-title">Travail actif</h2>
         <p className="pp-empty">Sélectionne un dossier pour l'ouvrir ici.</p>
       </section>
@@ -57,7 +68,7 @@ export default function DossierWorkspace({ dossierId }) {
 
   if (!dossier) {
     return (
-      <section className="pp-col pp-travail">
+      <section className="dw dw--vide">
         <h2 className="pp-section-title">Travail actif</h2>
         <p className="pp-empty">Ce dossier n'est plus disponible.</p>
       </section>
@@ -73,7 +84,7 @@ export default function DossierWorkspace({ dossierId }) {
   const raison      = (dossier.raisonAujourdhui || '').trim()
 
   return (
-    <section className="pp-col pp-travail dw">
+    <section className="dw">
       <header className="dw-head">
         <div className="dw-head-top">
           <span className="pp-section-title dw-eyebrow">Travail actif</span>
@@ -128,7 +139,11 @@ export default function DossierWorkspace({ dossierId }) {
                   const echeanceTache = formatISO(tache.echeance, formatCourt)
                   const tacheEnRetard = Boolean(echeanceTache) && !tache.done && !isClos && tache.echeance < aujourdhui
                   return (
-                    <li key={tache.id} className="dw-tache">
+                    <li
+                      key={tache.id}
+                      ref={tache.id === tacheVisee ? tacheRef : null}
+                      className={`dw-tache${tache.id === tacheVisee ? ' dw-tache--visee' : ''}`}
+                    >
                       <button
                         type="button"
                         className={`dw-check${tache.done ? ' dw-check--done' : ''}`}
@@ -191,12 +206,20 @@ export default function DossierWorkspace({ dossierId }) {
       </div>
 
       <style>{`
-        .dw { padding: 0; overflow: hidden; }
+        .dw {
+          display: flex;
+          flex-direction: column;
+          min-height: 0;
+          background: var(--surface);
+          border-left: 0.5px solid var(--border);
+          overflow: hidden;
+        }
+        .dw--vide { padding: 26px 24px; gap: 10px; }
 
         /* ── En-tête ── */
         .dw-head {
           flex-shrink: 0;
-          padding: 20px 28px 16px;
+          padding: 20px 24px 16px;
           border-bottom: 0.5px solid var(--border);
         }
         .dw-head-top {
@@ -221,7 +244,7 @@ export default function DossierWorkspace({ dossierId }) {
         .dw-etat--clos            { background: var(--gray-light);  color: var(--text-secondary); }
 
         .dw-titre {
-          font-size: 26px;
+          font-size: 22px;
           font-weight: 700;
           color: var(--text);
           line-height: 1.2;
@@ -261,14 +284,11 @@ export default function DossierWorkspace({ dossierId }) {
         .dw-body {
           flex: 1;
           min-height: 0;
-          display: grid;
-          grid-template-columns: minmax(0, 1fr) 260px;
-          gap: 28px;
+          display: flex;
+          flex-direction: column;
+          gap: 26px;
           overflow-y: auto;
-          padding: 22px 28px 28px;
-        }
-        @media (max-width: 1280px) {
-          .dw-body { grid-template-columns: minmax(0, 1fr); gap: 22px; }
+          padding: 20px 24px 28px;
         }
         .dw-main { display: flex; flex-direction: column; gap: 26px; min-width: 0; }
         .dw-aside { min-width: 0; }
@@ -307,6 +327,13 @@ export default function DossierWorkspace({ dossierId }) {
           border-bottom: 1px solid var(--border-light);
         }
         .dw-tache:last-child { border-bottom: none; }
+        .dw-tache--visee {
+          background: var(--green-light);
+          border-radius: var(--radius-sm);
+          box-shadow: inset 3px 0 0 var(--green);
+          padding-left: 10px;
+          padding-right: 8px;
+        }
         .dw-check {
           flex-shrink: 0;
           width: 20px;

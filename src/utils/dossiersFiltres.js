@@ -58,6 +58,15 @@ export function dossierCorrespondTemps(dossier, filtre, referenceISO = todayISO(
   return tachesActives(dossier).some(t => regle(t, referenceISO, j7))
 }
 
+// Même règle de période, appliquée à une seule tâche (liste transversale des tâches du Pupitre).
+// Le filtre porte sur les dates de la tâche : l'état fait / non fait est filtré à part par l'appelant.
+export function tacheCorrespondTemps(tache, filtre, referenceISO = todayISO()) {
+  const regle = REGLES_TEMPS[filtre]
+  if (!regle) return true
+  const t = tache && typeof tache === 'object' ? tache : {}
+  return regle(t, referenceISO, ajouterJoursISO(referenceISO, 7))
+}
+
 // ── Tris ──────────────────────────────────────────────────────────────────────
 // Échéance et date planifiée ne sont jamais mélangées : chaque tri n'utilise que son propre champ.
 export const TRIS = [
