@@ -3,11 +3,9 @@ import { useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 import { analyserBrainDump, genererPlanJournee } from '../services/claude'
 import { getRoutines } from '../services/db'
-import {
-  APP_TIME_ZONE, todayISO, todayFR, todayCalendarParts,
-  isTaskInActionQueue,
-} from '../utils/date'
+import { APP_TIME_ZONE, todayFR, isTaskInActionQueue } from '../utils/date'
 import { construirePlanJournee, delaiAvantChangement } from '../utils/planJournee'
+import { useHorlogeApp } from '../hooks/useHorlogeApp'
 
 // ── Ta journée : cache localStorage du plan rédigé par l'IA ──────────────────
 // Clé = jour civil + signature du plan (utils/planJournee) : mêmes données utiles le même jour → aucun appel IA.
@@ -71,14 +69,27 @@ function calcQuadrant(u, i) {
   return 4
 }
 
-function routinesDuJour(routines) {
-  const { dayOfWeek: dow, day: dom } = todayCalendarParts()
-  return routines.filter(r => {
+// Routines d'un jour civil donné. La règle de récurrence est appliquée au rendu, jamais au chargement :
+// sans cela, la liste resterait celle du jour où les routines ont été lues.
+// Midi UTC sert de calendrier neutre pour le jour de semaine, comme todayCalendarParts.
+function routinesDuJour(routines, jourISO) {
+  const [annee, mois, jourDuMois] = String(jourISO).split('-').map(Number)
+  const jourSemaine = new Date(Date.UTC(annee, mois - 1, jourDuMois, 12)).getUTCDay()
+  return (Array.isArray(routines) ? routines : []).filter(r => {
     if (r.recurrence === 'daily')   return true
-    if (r.recurrence === 'weekly')  return r.jourSemaine === dow
-    if (r.recurrence === 'monthly') return r.jourMois    === dom
+    if (r.recurrence === 'weekly')  return r.jourSemaine === jourSemaine
+    if (r.recurrence === 'monthly') return r.jourMois    === jourDuMois
     return false
   })
+}
+
+const cleRoutinesFaites = (jourISO) => `nm-routines-faites-${jourISO}`
+
+function lireRoutinesFaites(cle) {
+  try {
+    const lu = JSON.parse(localStorage.getItem(cle))
+    return Array.isArray(lu) ? lu : []
+  } catch { return [] }
 }
 
 // ── Catégories temporelles ───────────────────────────────────────────────────
@@ -161,32 +172,45 @@ export default function Aujourdhui() {
   const [showBD,    setShowBD]    = useState(false)
   const [indexTache, setIndexTache] = useState(0)
 
+  // ── Horloge partagée : jour civil Europe/Zurich, minuit et retour au premier plan ──
+  const { jour, tick, synchroniser } = useHorlogeApp()
+
   // ── Routines du jour ───────────────────────────────────────────────────────
   // Coche "fait aujourd'hui" : localStorage uniquement (clé datée), jamais Supabase
-  const [routinesJour, setRoutinesJour] = useState([])
-  const [routinesFaites, setRoutinesFaites] = useState(() => {
-    try { return JSON.parse(localStorage.getItem(`nm-routines-faites-${todayISO()}`)) || [] }
-    catch { return [] }
-  })
+  const [routinesToutes, setRoutinesToutes] = useState([])
+  const cleRoutines = cleRoutinesFaites(jour)
+  const [routinesFaites, setRoutinesFaites] = useState(() => lireRoutinesFaites(cleRoutines))
 
   useEffect(() => {
     if (!authUser) return
-    getRoutines(authUser.id).then(r => setRoutinesJour(routinesDuJour(r))).catch(() => {})
+    getRoutines(authUser.id).then(setRoutinesToutes).catch(() => {})
   }, [authUser])
 
+  // Filtrées pour le jour courant : au changement de jour, la liste suit sans rechargement ni remontage
+  const routinesJour = useMemo(() => routinesDuJour(routinesToutes, jour), [routinesToutes, jour])
+
+  // Nouveau jour : l'état « fait » repart de la clé de ce jour-là (identité conservée si le contenu est le même)
+  useEffect(() => {
+    setRoutinesFaites(precedent => {
+      const lu = lireRoutinesFaites(cleRoutines)
+      const identique = lu.length === precedent.length && lu.every(id => precedent.includes(id))
+      return identique ? precedent : lu
+    })
+  }, [cleRoutines])
+
+  // L'écriture vise toujours la clé dont l'état a été lu : un clic après minuit ne recopie jamais la veille
   const toggleRoutineFaite = (id) => {
     setRoutinesFaites(prev => {
       const next = prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
-      localStorage.setItem(`nm-routines-faites-${todayISO()}`, JSON.stringify(next))
+      try { localStorage.setItem(cleRoutines, JSON.stringify(next)) }
+      catch { /* stockage indisponible : la coche reste visible, sans persistance */ }
       return next
     })
   }
 
   // ── Ta journée : plan déterministe (utils/planJournee) rédigé par l'IA ─────
-  // L'heure seule ne change le plan qu'à des instants précis (heure fixe qui passe, minuit) : `tick` est avancé
-  // par un minuteur unique ciblé sur le prochain de ces instants, et au retour sur la page. Pas de polling.
-  const [tick,        setTick]        = useState(() => Date.now())
-  const [pageVisible, setPageVisible] = useState(() => document.visibilityState !== 'hidden')
+  // L'heure seule ne change le plan qu'à des instants précis. Minuit et le retour au premier plan sont tenus
+  // par useHorlogeApp ; seule la prochaine heure fixe qui devient « passée » est propre à cette page.
   const [planTexte,   setPlanTexte]   = useState(null)
   const [planLoading, setPlanLoading] = useState(false)
   const [planError,   setPlanError]   = useState(null)
@@ -211,7 +235,8 @@ export default function Aujourdhui() {
 
   // Génération automatique : au plus une fois par jour + signature, page visible, jamais pour un plan vide.
   // Cache trouvé, plan vide, pas de clé ou échec déjà constaté pour cette signature → aucun appel.
-  // La visibilité est lue au moment de l'effet ; `pageVisible` ne sert qu'à le relancer au retour sur la page.
+  // La visibilité est lue au moment de l'effet ; `tick` ne sert qu'à le relancer au retour sur la page
+  // (génération dupliquée impossible : genererPlanAvecCache réutilise la promesse en cours pour la même clé).
   useEffect(() => {
     if (loading || document.visibilityState === 'hidden') return
     const enCache = plan.vide ? null : lireCachePlan(plan)
@@ -223,32 +248,18 @@ export default function Aujourdhui() {
       return
     }
     lancerGeneration(plan)
-  }, [loading, pageVisible, apiKey, cleCourante]) // eslint-disable-line
+  }, [loading, tick, apiKey, cleCourante]) // eslint-disable-line
 
-  // Minuteur ciblé : prochaine heure fixe du jour qui devient « passée », ou minuit
+  // Minuteur propre à la page : prochaine heure fixe du jour qui devient « passée ».
+  // Minuit et le retour au premier plan sont déjà couverts par useHorlogeApp, qui porte les écouteurs.
   useEffect(() => {
-    const minuteur = setTimeout(() => setTick(Date.now()), delaiAvantChangement(plan))
+    const minuteur = setTimeout(synchroniser, delaiAvantChangement(plan))
     return () => clearTimeout(minuteur)
-  }, [plan])
-
-  // Retour sur la page (onglet, application en arrière-plan) : l'heure a pu avancer pendant l'absence
-  useEffect(() => {
-    const auRetour = () => {
-      const visible = document.visibilityState !== 'hidden'
-      setPageVisible(visible)
-      if (visible) setTick(Date.now())
-    }
-    document.addEventListener('visibilitychange', auRetour)
-    window.addEventListener('focus', auRetour)
-    return () => {
-      document.removeEventListener('visibilitychange', auRetour)
-      window.removeEventListener('focus', auRetour)
-    }
-  }, [])
+  }, [plan, synchroniser])
 
   // ↺ : plan reconstruit depuis les données actuelles, génération forcée même à signature identique, cache remplacé
   const rafraichirPlan = () => {
-    setTick(Date.now())
+    synchroniser()
     const actuel = construirePlanJournee(dossiers || [])
     if (actuel.vide) {
       requetePlan.current++
@@ -270,7 +281,7 @@ export default function Aujourdhui() {
       }))
       const created = await Promise.all(enrichis.map(d => creerDossier(d)))
       // Focus ne reçoit que la file d'action : ni tâche future, ni tâche d'aujourd'hui avec heure
-      const referenceISO = todayISO()
+      const referenceISO = jour
       const brainDumpTaches = created
         .sort((a, b) => a.quadrant - b.quadrant)
         .flatMap(d =>
@@ -312,7 +323,8 @@ export default function Aujourdhui() {
   const closeBD = () => { if (!bdLoading) { setShowBD(false); setBdTexte(''); setBdError('') } }
 
   // ── Données état actif ────────────────────────────────────────────────────
-  const today = todayISO()
+  // `jour` vient de useHorlogeApp : il change à minuit et au retour au premier plan, sans rechargement
+  const today = jour
 
   // File d'action : 7 premiers dossiers actionnables ayant au moins une tâche actionnable
   // (liste dédiée : un dossier en attente / bloqué / 100 % futur ne prend pas de place)
