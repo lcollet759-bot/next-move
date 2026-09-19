@@ -129,7 +129,6 @@ function LigneCategorie({ cle, item, onOuvrir }) {
     <div
       className={`aj-cat-row${attente ? ' aj-cat-row-attente' : ''}`}
       onClick={() => onOuvrir(item.dossierId)}
-      onTouchEnd={(e) => { e.preventDefault(); onOuvrir(item.dossierId) }}
     >
       <span className="aj-cat-texte">
         <span className="aj-cat-titre">{item.titre || item.dossierTitre}</span>
@@ -516,14 +515,12 @@ export default function Aujourdhui() {
                     <button
                       className="aj-btn-start"
                       onClick={() => navigate('/focus', { state: { taches: toutesLesTaches, from: 'today' } })}
-                      onTouchEnd={(e) => { e.preventDefault(); navigate('/focus', { state: { taches: toutesLesTaches, from: 'today' } }) }}
                     >
                       Commencer
                     </button>
                     <button
                       className="aj-btn-later"
                       onClick={handleApres}
-                      onTouchEnd={(e) => { e.preventDefault(); handleApres() }}
                       disabled={toutesLesTaches.length <= 1}
                     >Après</button>
                   </div>
@@ -564,7 +561,6 @@ export default function Aujourdhui() {
                   <span className="aj-slabel aj-slabel-wait">En attente de retour</span>
                   <div
                     onClick={() => navigate(`/dossiers/${dossiersAttente[0].id}`)}
-                    onTouchEnd={(e) => { e.preventDefault(); navigate(`/dossiers/${dossiersAttente[0].id}`) }}
                     style={{ cursor: 'pointer' }}
                   >
                     <p className="aj-wait-titre">{dossiersAttente[0].titre}</p>
