@@ -121,6 +121,11 @@ function reducer(state, action) {
     // squelette de chargement ni relance des effets qui en dépendent. Jamais dispatché sur échec.
     case 'RESYNC':
       return { ...state, dossiers: action.dossiers, journal: action.journal }
+    // Chargement échoué alors que les données de cet utilisateur sont déjà en mémoire : on libère
+    // l'écran de chargement sans toucher aux données. Sans cela, un load() relancé hors connexion
+    // remplaçait un portefeuille complet par des tableaux vides.
+    case 'LOAD_FAILED':
+      return { ...state, loading: false }
     case 'RESET':
       return { ...init, loading: false }
     case 'ADD_DOSSIER':
@@ -158,6 +163,11 @@ export function AppProvider({ children }) {
   const resyncEnCours  = useRef(false)
   const dernierEssai   = useRef(0)
 
+  // Identifiant de l'utilisateur dont les données sont actuellement en mémoire. Sert à distinguer
+  // « le chargement a échoué mais j'ai déjà ses données » (on les garde) de « je n'ai rien pour lui »
+  // (on repart de l'état vide), sans jamais montrer à un compte les dossiers d'un autre.
+  const donneesChargeesPour = useRef(null)
+
   // Enveloppe une mutation sans rien changer à son comportement : seul le compteur bouge.
   const protegerEcriture = (fn) => async (...args) => {
     ecrituresEnVol.current++
@@ -188,6 +198,11 @@ export function AppProvider({ children }) {
     }
     initAuth()
 
+    // Supabase réémet SIGNED_IN à chaque retour au premier plan, avec un objet session relu du
+    // stockage (JSON.parse) : même utilisateur, nouvelle référence. Remplacer l'objet ferait
+    // repartir tous les effets qui en dépendent. À identifiant égal, on garde la référence.
+    const memeUtilisateur = (u) => setAuthUser(prec => (prec?.id === u.id ? prec : u))
+
     const { data: { subscription } } = onAuthStateChange(async (event, session) => {
       if (session?.user) {
         let profile = null
@@ -195,7 +210,7 @@ export function AppProvider({ children }) {
           profile = await withTimeout(getUserProfile(session.user.id), 3000)
         } catch (err) {
           console.warn('[auth] getUserProfile timeout au login, connexion quand même', err.message)
-          setAuthUser(session.user)
+          memeUtilisateur(session.user)
           setAuthErrorMessage('')
           return
         }
@@ -206,7 +221,7 @@ export function AppProvider({ children }) {
           setAuthErrorMessage('Ton compte a été désactivé. Contacte l\'administrateur.')
           return
         }
-        setAuthUser(session.user)
+        memeUtilisateur(session.user)
         setUserProfile(profile)
         setAuthErrorMessage('')
       } else {
@@ -226,9 +241,12 @@ export function AppProvider({ children }) {
     dispatch({ type: 'RESET' })
   }
 
-  // ── Chargement des données (déclenché quand authUser est connu) ────────────
+  // ── Chargement initial (déclenché quand l'identifiant utilisateur est connu) ──
+  // Dépend de l'identifiant, jamais de l'objet `authUser` : Supabase en fournit un nouveau à chaque
+  // retour au premier plan pour le même compte, ce qui relançait tout le chargement initial.
+  const userId = authUser?.id ?? null
   useEffect(() => {
-    if (!authUser) return
+    if (!userId) return
 
     // ── Migration one-shot depuis IndexedDB ──────────────────────────────────
     async function migrateFromIndexedDB() {
@@ -241,8 +259,8 @@ export function AppProvider({ children }) {
         const oldJournal  = await idb.getAll('journal')
         if (oldDossiers.length > 0) {
           // Upsert en batch pour éviter les conflits
-          await Promise.all(oldDossiers.map(d => db.saveDossier(d, authUser?.id)))
-          await Promise.all(oldJournal.map(j => db.addJournalEntry(j, authUser?.id)))
+          await Promise.all(oldDossiers.map(d => db.saveDossier(d, userId)))
+          await Promise.all(oldJournal.map(j => db.addJournalEntry(j, userId)))
           console.log(`[Migration] ${oldDossiers.length} dossiers, ${oldJournal.length} entrées migrés vers Supabase`)
         }
         idb.close()
@@ -271,29 +289,31 @@ export function AppProvider({ children }) {
         }
       } catch {}
 
-      let donnees = { dossiers: [], journal: [] }
       try {
-        donnees = await chargerDonnees(authUser?.id, 3000)
+        const donnees = await chargerDonnees(userId, 3000)
+        donneesChargeesPour.current = userId
+        dispatch({ type: 'LOADED', ...donnees })
       } catch (err) {
         console.warn('[load] Supabase timeout, app starting offline', err.message)
-        // Dossiers et journal restent vides — l'app démarre quand même
+        // Données de ce compte déjà en mémoire (rechargement, pas bootstrap) : on les garde et on
+        // libère seulement l'écran de chargement. Sinon — vrai premier chargement, ou compte
+        // différent de celui dont les données sont en mémoire — on part sur un état vide.
+        dispatch(donneesChargeesPour.current === userId
+          ? { type: 'LOAD_FAILED' }
+          : { type: 'LOADED', dossiers: [], journal: [] })
       }
-
-      // Au démarrage seulement : un échec laisse l'app partir hors-ligne, écran vide assumé.
-      // Le resync, lui, ne dispatche jamais sur échec (voir rafraichirDonnees).
-      dispatch({ type: 'LOADED', ...donnees })
     }
     load()
     requestPermission()
     const interval = setInterval(checkReminders, 60 * 60 * 1000)
     checkReminders()
     return () => clearInterval(interval)
-  }, [authUser])
+  }, [userId])
 
   // ── Resync au retour au premier plan ──────────────────────────────────────
   // Retourne la raison du refus, ou 'ok'. Ne lève jamais : un appelant peut l'ignorer sans risque.
   const rafraichirDonnees = useCallback(async () => {
-    if (!authUser)                 return 'sans-session'
+    if (!userId)                    return 'sans-session'
     if (ecrituresEnVol.current > 0) return 'ecriture-en-vol'   // l'état optimiste reste prioritaire
     if (resyncEnCours.current)      return 'deja-en-cours'
     // Anti-rafale : compté depuis le début de l'essai, pour ne pas marteler un réseau indisponible
@@ -302,7 +322,7 @@ export function AppProvider({ children }) {
     resyncEnCours.current = true
     dernierEssai.current = Date.now()
     try {
-      const donnees = await chargerDonnees(authUser.id, RESYNC_TIMEOUT_MS)
+      const donnees = await chargerDonnees(userId, RESYNC_TIMEOUT_MS)
       // Une mutation a pu démarrer pendant la requête : ses données seraient plus fraîches que celles-ci
       if (ecrituresEnVol.current > 0) return 'ecriture-en-vol'
       dispatch({ type: 'RESYNC', ...donnees })
@@ -314,11 +334,11 @@ export function AppProvider({ children }) {
     } finally {
       resyncEnCours.current = false
     }
-  }, [authUser])
+  }, [userId])
 
   // Un seul mécanisme pour toute l'application, sans polling : le Pupitre en bénéficie par héritage.
   useEffect(() => {
-    if (!authUser) return
+    if (!userId) return
     const auRetour = () => {
       if (document.visibilityState !== 'hidden') rafraichirDonnees()
     }
@@ -328,7 +348,7 @@ export function AppProvider({ children }) {
       document.removeEventListener('visibilitychange', auRetour)
       window.removeEventListener('focus', auRetour)
     }
-  }, [authUser, rafraichirDonnees])
+  }, [userId, rafraichirDonnees])
 
   async function log(dossierId, action, detail) {
     const entry = { id: uuid(), dossierId, action, detail, timestamp: new Date().toISOString() }
